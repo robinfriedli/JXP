@@ -3,6 +3,7 @@ package net.robinfriedli.jxp.persist;
 import net.robinfriedli.jxp.api.XmlElement;
 
 import javax.annotation.Nullable;
+
 import java.util.List;
 import java.util.concurrent.Callable;
 
@@ -35,7 +36,7 @@ public interface Context {
     List<XmlElement> getElements();
 
     /**
-     * @return All Elements that are not in {@link AbstractXmlElement.State} DELETION
+     * @return All Elements that are not in {@link net.robinfriedli.jxp.api.XmlElement.State} DELETION
      */
     List<XmlElement> getUsableElements();
 
@@ -62,6 +63,7 @@ public interface Context {
 
     /**
      * Same as {@link #getElement(String)} but throws Exception when null
+     *
      * @param id to find the {@link XmlElement} with
      * @return found {@link XmlElement}
      */
@@ -141,9 +143,9 @@ public interface Context {
 
     /**
      * Quickly execute a one-liner that requires a {@link Transaction} like
-     *
+     * <p>
      * {@code context.invoke(true, () -> bla.setAttribute("name", "value"));}
-     *
+     * <p>
      * or several statements without returning anything like
      *
      * <pre>
@@ -153,7 +155,7 @@ public interface Context {
      *        elem.setTextContent("test");
      *     });
      * </pre>
-     *
+     * <p>
      * A {@link Transaction} is required by any action that creates, changes or deletes an {@link XmlElement}
      *
      * @param commit defines if the changes will be committed to XML file immediately after applying or remain in Context
@@ -204,8 +206,8 @@ public interface Context {
      * The environment variable can be anything you might need somewhere els in context with this transaction.
      * The environment variable is set when using either method {@link #invoke(boolean, Callable, Object)}
      * {@link #invoke(boolean, Runnable, Object)}
-     *
-     * E.g. say you're developing a Discord bot and you've implemented an {@link EventListener} that sends a message
+     * <p>
+     * E.g. say you're developing a Discord bot and you've implemented an {@link net.robinfriedli.jxp.events.EventListener} that sends a message
      * after an Element has been added. In this case you could set the MessageChannel the command came from as envVar
      * to send the message to the right channel.
      *

@@ -90,16 +90,20 @@ public class DefaultPersistenceManager {
     public void commitElementChanges(ElementChangingEvent event) throws CommitException {
         XmlElement element = event.getSource();
         List<XmlAttribute> attributesToChange = event.getChangedAttributes() != null
-                ? event.getChangedAttributes().stream().map(ValueChangingEvent::getNewValue).collect(Collectors.toList())
-                : Lists.newArrayList();
+            ? event.getChangedAttributes().stream().map(ValueChangingEvent::getNewValue).collect(Collectors.toList())
+            : Lists.newArrayList();
 
         List<XmlElement> subElementsToAdd = event.getAddedSubElements();
-        List<XmlElement> subElementsToRemove  = event.getRemovedSubElements();
+        List<XmlElement> subElementsToRemove = event.getRemovedSubElements();
 
-        if (subElementsToAdd != null && !subElementsToAdd.isEmpty()) xmlPersister.addSubElements(element, subElementsToAdd);
+        if (subElementsToAdd != null && !subElementsToAdd.isEmpty()) {
+            xmlPersister.addSubElements(element, subElementsToAdd);
+        }
         if (!attributesToChange.isEmpty()) xmlPersister.setAttributes(element, attributesToChange);
         if (element.textContentChanged()) xmlPersister.setTextContent(element);
-        if (subElementsToRemove != null && !subElementsToRemove.isEmpty()) xmlPersister.removeSubElements(element, subElementsToRemove);
+        if (subElementsToRemove != null && !subElementsToRemove.isEmpty()) {
+            xmlPersister.removeSubElements(element, subElementsToRemove);
+        }
     }
 
     public void write() throws CommitException {

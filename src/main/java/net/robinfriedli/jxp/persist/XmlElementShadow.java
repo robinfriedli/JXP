@@ -2,6 +2,7 @@ package net.robinfriedli.jxp.persist;
 
 import net.robinfriedli.jxp.api.XmlAttribute;
 import net.robinfriedli.jxp.api.XmlElement;
+import net.robinfriedli.jxp.events.ElementChangingEvent;
 import org.w3c.dom.Element;
 
 import java.util.HashMap;

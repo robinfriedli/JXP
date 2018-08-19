@@ -12,6 +12,7 @@ import net.robinfriedli.jxp.persist.XmlElementShadow;
 import net.robinfriedli.jxp.persist.XmlPersister;
 
 import javax.annotation.Nullable;
+
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -19,7 +20,7 @@ import java.util.stream.Collectors;
 
 /**
  * Abstract class to extend for classes you wish to able to persist to XML file.
- * Classes that extend this class can be persisted via the {@link PersistenceManager}
+ * Classes that extend this class can be persisted via the {@link net.robinfriedli.jxp.persist.DefaultPersistenceManager}
  */
 public abstract class AbstractXmlElement implements XmlElement {
 
@@ -298,6 +299,7 @@ public abstract class AbstractXmlElement implements XmlElement {
         ValueChangingEvent<String> valueChangingEvent = new ValueChangingEvent<>(this, oldValue, textContent);
         addChange(new ElementChangingEvent(this, valueChangingEvent));
     }
+
     @Override
     public boolean hasTextContent() {
         return textContent != null && !textContent.equals("");

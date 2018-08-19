@@ -5,6 +5,7 @@ import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.exceptions.PersistException;
 
 import javax.annotation.Nullable;
+
 import java.util.List;
 import java.util.stream.Collectors;
 

@@ -7,13 +7,14 @@ import net.robinfriedli.jxp.persist.Context;
 import net.robinfriedli.jxp.persist.XmlElementShadow;
 
 import javax.annotation.Nullable;
+
 import java.util.List;
 
 /**
- * Enables classes to be persisted as XML elements. Make your class extend {@link AbstractXmlElement} to enable it
- * to be persisted via {@link Context} and {@link PersistenceManager}.
+ * Enables classes to be persisted as XML elements. Extend {@link AbstractXmlElement} to persist your elements using
+ * {@link Context#invoke(boolean, Runnable)}.
  */
-public interface XmlElement{
+public interface XmlElement {
 
     /**
      * Set the parent element for this XmlElement. Parent element can only be changed before the XmlElement has been

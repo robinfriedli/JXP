@@ -1,8 +1,10 @@
 package net.robinfriedli.jxp.api;
 
 import net.robinfriedli.jxp.persist.Context;
+import net.robinfriedli.jxp.persist.DefaultPersistenceManager;
 
 import javax.annotation.Nullable;
+
 import java.util.List;
 import java.util.Map;
 

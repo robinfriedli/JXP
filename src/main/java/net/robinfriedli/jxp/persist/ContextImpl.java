@@ -6,6 +6,7 @@ import net.robinfriedli.jxp.exceptions.CommitException;
 import net.robinfriedli.jxp.exceptions.PersistException;
 
 import javax.annotation.Nullable;
+
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -88,15 +89,15 @@ public class ContextImpl implements Context {
     @Nullable
     public <E extends XmlElement> E getElement(String id, Class<E> type) {
         List<E> foundElements = getUsableElements().stream()
-                .filter(element -> element.getId() != null && element.getId().equals(id) && type.isInstance(element))
-                .map(type::cast)
-                .collect(Collectors.toList());
+            .filter(element -> element.getId() != null && element.getId().equals(id) && type.isInstance(element))
+            .map(type::cast)
+            .collect(Collectors.toList());
 
         if (foundElements.size() == 1) {
             return foundElements.get(0);
         } else if (foundElements.size() > 1) {
             throw new IllegalStateException("Id: " + id + " not unique. Element loading failed. " +
-                    "Add Elements using the #invoke method via the PersistenceManager instead of adding to Context directly");
+                "Add Elements using the #invoke method via the PersistenceManager instead of adding to Context directly");
         } else {
             return null;
         }
@@ -306,7 +307,7 @@ public class ContextImpl implements Context {
         if (transaction != null) {
             return;
         } else {
-            transaction =  Transaction.createTx();
+            transaction = Transaction.createTx();
         }
     }
 
