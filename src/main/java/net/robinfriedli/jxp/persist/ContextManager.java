@@ -49,7 +49,7 @@ public class ContextManager {
         this.path = path;
         this.listeners = listeners;
         this.context = new ContextImpl(this, persistenceManager, path);
-        createBoundContext(path, bindingObject, id, persistenceManager);
+        createBoundContext(bindingObject, id, persistenceManager);
     }
 
     public <E> ContextManager(String path, DefaultPersistenceManager persistenceManager, Map<E, String> bindingObjectsWithId) {
@@ -63,7 +63,7 @@ public class ContextManager {
         this.path = path;
         this.listeners = listeners;
         this.context = new ContextImpl(this, persistenceManager, path);
-        createBoundContexts(path, bindingObjectsWithId, persistenceManager);
+        createBoundContexts(bindingObjectsWithId, persistenceManager);
     }
 
     public String getPath() {
@@ -74,7 +74,7 @@ public class ContextManager {
         return context;
     }
 
-    public <E> void createBoundContext(String path, E bindingObject, String id, DefaultPersistenceManager persistenceManager) {
+    public <E> void createBoundContext(E bindingObject, String id, DefaultPersistenceManager persistenceManager) {
         Context.BindableContext<E> bindableContext = new BindableContextImpl<>(this, bindingObject, id, persistenceManager);
         if (boundContexts == null) {
             boundContexts = Lists.newArrayList(bindableContext);
@@ -83,7 +83,7 @@ public class ContextManager {
         }
     }
 
-    public <E> void createBoundContexts(String path, Map<E, String> bindingObjectsWithId, DefaultPersistenceManager persistenceManager) {
+    public <E> void createBoundContexts(Map<E, String> bindingObjectsWithId, DefaultPersistenceManager persistenceManager) {
         List<Context.BindableContext> bindableContexts = Lists.newArrayList();
 
         for (E bindingObject : bindingObjectsWithId.keySet()) {
