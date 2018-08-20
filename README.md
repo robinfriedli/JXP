@@ -5,7 +5,7 @@ Java XML Persistence API
 
     <repository>
       <id>JXP</id>
-      <url>https://raw.github.com/robinfriedli/JXP/raw/repository/</url>
+      <url>https://raw.github.com/robinfriedli/JXP/repository/</url>
     </repository>
 
     <dependency>
