@@ -138,6 +138,9 @@ public class XmlPersister {
                 persistElement(subElement, elem);
             }
         }
+
+        element.createShadow();
+        element.setState(XmlElement.State.CLEAN);
     }
 
     private Element requireElement(XmlElement xmlElement) throws CommitException {

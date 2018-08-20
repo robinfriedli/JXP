@@ -73,8 +73,6 @@ public class Transaction {
                             if (!source.isSubElement()) {
                                 persister.persistElement(source);
                             }
-                            source.setState(XmlElement.State.CLEAN);
-                            source.createShadow();
                         }
                     }
                 }
