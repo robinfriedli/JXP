@@ -98,6 +98,7 @@ public class DefaultPersistenceManager {
 
         if (subElementsToAdd != null && !subElementsToAdd.isEmpty()) {
             xmlPersister.addSubElements(element, subElementsToAdd);
+            subElementsToAdd.forEach(elem -> elem.setState(XmlElement.State.CLEAN));
         }
         if (!attributesToChange.isEmpty()) xmlPersister.setAttributes(element, attributesToChange);
         if (element.textContentChanged()) xmlPersister.setTextContent(element);

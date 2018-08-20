@@ -219,9 +219,9 @@ public interface XmlElement {
     boolean matchesStructure(XmlElement elementToCompare);
 
     /**
-     * Delete this XmlElement. Creates an {@link ElementDeletingEvent} which, when applied, will set this XmlElement
-     * to {@link State#DELETION}. Only when committing the XmlElement will be fully removed from its {@link Context} and
-     * XML file.
+     * Delete this XmlElement. Creates an {@link net.robinfriedli.jxp.events.ElementDeletingEvent} which, when applied,
+     * will set this XmlElement to {@link State#DELETION}. Only when committing the XmlElement will be fully removed from
+     * its {@link Context} and XML file.
      */
     void delete();
 
@@ -245,7 +245,7 @@ public interface XmlElement {
      *
      * @param change {@link ElementChangingEvent} to apply
      * @throws UnsupportedOperationException if source of event does not equal this XmlElement
-     * @throws PersistException if {@link Context} has no {@link Transaction}
+     * @throws PersistException if {@link Context} has no {@link net.robinfriedli.jxp.persist.Transaction}
      */
     void applyChange(ElementChangingEvent change) throws UnsupportedOperationException, PersistException;
 
