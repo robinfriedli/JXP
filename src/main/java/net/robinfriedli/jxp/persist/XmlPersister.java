@@ -140,7 +140,11 @@ public class XmlPersister {
         }
 
         element.createShadow();
-        element.setState(XmlElement.State.CLEAN);
+        if (!element.hasChanges()) {
+            element.setState(XmlElement.State.CLEAN);
+        } else {
+            element.setState(XmlElement.State.TOUCHED);
+        }
     }
 
     private Element requireElement(XmlElement xmlElement) throws CommitException {
