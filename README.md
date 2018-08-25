@@ -33,7 +33,7 @@ Initializing an XmlElement in this State triggers and ElementCreatedEvent and re
 happen within the Context#invoke method.
 
 Example:
-
+```java
     package net.robinfriedli.jxp.api;
 
     import java.util.HashMap;
@@ -102,9 +102,9 @@ Example:
             return attributes;
         }
     }
-
+```
 Default implementation of the DefaultPersistenceManger#getAllElements method:
-
+```java
     public List<XmlElement> getAllElements() {
         List<XmlElement> xmlElements = Lists.newArrayList();
         List<Element> allTopLevelElements = xmlPersister.getAllTopLevelElements();
@@ -136,7 +136,7 @@ Default implementation of the DefaultPersistenceManger#getAllElements method:
 
         return new BaseXmlElement(element.getTagName(), attributeMap, instantiatedSubElems, textContent, XmlElement.State.CLEAN, context);
     }
-
+```
 Hint: in your implementation of DefaultPersistenceManager you can use the getContext and getXmlPersister methods to get the
 respective classes
 
@@ -153,16 +153,16 @@ second parameter: the actual task to run, a Callable or Runnable depending on wh
 optional third parameter: any Object to set as this Context's environment variable.
 
 The quickest way to add a new XmlElement to the file:
-
+```java
     context.invoke(true, () -> new Country("Italia", "Italy", true, Lists.newArrayList(rome, florence, venice), context));
-
+```
 The environment variable can be anything you might need somewhere els in context with this transaction.
 E.g. say you're developing a Discord bot and you've implemented an EventListener that sends a message
 after an Element has been added. In this case you could set the MessageChannel the command came from as envVar
 to send the message to the right channel.
 
 Example:
-
+```java
     Context context = contextManager.getContext();
     context.invoke(true, () -> {
         Country country = new Country("Schweiz", "Switzerland", true, Lists.newArrayList(this), context);
@@ -173,7 +173,7 @@ Example:
         Country france = context.getElement("France", Country.class);
         france.delete();
     });
-
+```
 ## Transaction
 
 All changes made by a task are added to the Context's current transaction. At the end of the task all changes will be applied
@@ -187,7 +187,7 @@ You can get the XmlPersister via context.getPersistenceManager().getXmlPersister
 ## EventListener
 
 The EventListener offers 3 methods that get fired when the corresponding Event gets applied.
-
+```java
     public void elementCreating(ElementCreatedEvent event) {
     }
 
@@ -196,3 +196,4 @@ The EventListener offers 3 methods that get fired when the corresponding Event g
 
     public void elementChanging(ElementChangingEvent event) {
     }
+```
