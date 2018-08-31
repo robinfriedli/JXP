@@ -139,10 +139,7 @@ public class XmlPersister {
             }
         }
 
-        if (!element.isPersisted()) {
-            element.createShadow();
-        }
-
+        element.createShadow();
         if (!element.hasChanges()) {
             element.setState(XmlElement.State.CLEAN);
         } else {
