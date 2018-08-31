@@ -17,6 +17,11 @@ import java.util.List;
 public interface XmlElement {
 
     /**
+     * Persists a new XmlElement in {@link State#CONCEPTION} to the XML file
+     */
+    void persist();
+
+    /**
      * Set the parent element for this XmlElement. Parent element can only be changed before the XmlElement has been
      * persisted or while the elements are being loaded from the XML file -> before the element has a {@link XmlElementShadow}
      */

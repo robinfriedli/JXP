@@ -99,12 +99,7 @@ public abstract class AbstractXmlElement implements XmlElement {
         this.attributes = attributes;
 
         if (state == State.CONCEPTION) {
-            Transaction transaction = context.getTransaction();
-            if (transaction == null) {
-                throw new PersistException("Context has no transaction. Use Context#invoke.");
-            }
             subElements.forEach(sub -> sub.setParent(this));
-            transaction.addChange(new ElementCreatedEvent(this));
         } else if (state == State.CLEAN) {
             // when an XmlElement is instantiated with State CLEAN that means it was created while initializing a new Context
             // via DefaultPersistenceManager#getAllElements and thus already exists in the XmlFile. In this case we need
@@ -119,6 +114,24 @@ public abstract class AbstractXmlElement implements XmlElement {
     @Override
     @Nullable
     public abstract String getId();
+
+    @Override
+    public void persist() {
+        Transaction transaction = context.getTransaction();
+        if (transaction == null) {
+            throw new PersistException("Context has no transaction. Use Context#invoke.");
+        }
+
+        if (isPersisted()) {
+            throw new PersistException("Cannot persist " + toString() + ". XmlElement is already persisted");
+        }
+
+        if (state != State.CONCEPTION) {
+            throw new PersistException("Cannot persist " + toString() + ". XmlElement is not in state CONCEPTION");
+        }
+
+        transaction.addChange(new ElementCreatedEvent(this));
+    }
 
     @Override
     public void setParent(XmlElement parent) {
