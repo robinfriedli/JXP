@@ -76,7 +76,6 @@ public class Transaction {
                         }
                     }
                 }
-                changes.stream().filter(change -> change instanceof ElementChangingEvent).forEach(change -> change.getSource().updateShadow());
             } catch (CommitException e) {
                 e.printStackTrace();
                 rollback();

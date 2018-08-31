@@ -100,8 +100,14 @@ public class DefaultPersistenceManager {
             xmlPersister.addSubElements(element, subElementsToAdd);
             subElementsToAdd.forEach(elem -> elem.setState(XmlElement.State.CLEAN));
         }
-        if (!attributesToChange.isEmpty()) xmlPersister.setAttributes(element, attributesToChange);
-        if (element.textContentChanged()) xmlPersister.setTextContent(element);
+        if (!attributesToChange.isEmpty()) {
+            xmlPersister.setAttributes(element, attributesToChange);
+            element.updateShadow();
+        }
+        if (element.textContentChanged()) {
+            xmlPersister.setTextContent(element);
+            element.updateShadow();
+        }
         if (subElementsToRemove != null && !subElementsToRemove.isEmpty()) {
             xmlPersister.removeSubElements(element, subElementsToRemove);
         }
