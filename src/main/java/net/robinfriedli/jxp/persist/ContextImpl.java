@@ -149,7 +149,7 @@ public class ContextImpl implements Context {
             }
             if (element.getId() != null && getElement(element.getId()) != null) {
                 throw new PersistException("Attempting to add duplicate XmlElement to Context." +
-                    "Use DefaultPersistenceManager#addElement to automatically load and adjust existing XmlElement");
+                    " Use DefaultPersistenceManager#castElement to adjust the existing element to the new one");
             }
             inMemoryElements.add(element);
         }
