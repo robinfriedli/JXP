@@ -343,15 +343,21 @@ public abstract class AbstractXmlElement implements XmlElement {
     @Override
     public void addChange(ElementChangingEvent change) {
         if (!isLocked()) {
-            Transaction transaction = context.getTransaction();
+            if (state != State.CONCEPTION) {
+                Transaction transaction = context.getTransaction();
 
-            if (transaction == null) {
-                throw new PersistException("Context has no transaction. Use Context#exectePersistTask");
+                if (transaction == null) {
+                    throw new PersistException("Context has no transaction. Use Context#exectePersistTask");
+                }
+
+                if (state == State.CLEAN) {
+                    setState(State.TOUCHED);
+                }
+                changes.add(change);
+                transaction.addChange(change);
+            } else {
+                change.apply();
             }
-
-            setState(State.TOUCHED);
-            changes.add(change);
-            transaction.addChange(change);
         } else {
             throw new PersistException("Unable to add Change. " + toString() + " is locked, probably duplicate.");
         }

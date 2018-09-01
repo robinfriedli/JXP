@@ -204,12 +204,14 @@ public class ContextImpl implements Context {
             getTx();
         }
 
-        E returnValue = null;
+        E returnValue;
 
         try {
             returnValue = task.call();
         } catch (Exception e) {
             e.printStackTrace();
+            closeTx();
+            throw new PersistException("Exception during task run. Closing transaction.");
         }
 
         if (!encapsulated) {
@@ -242,7 +244,13 @@ public class ContextImpl implements Context {
             getTx();
         }
 
-        task.run();
+        try {
+            task.run();
+        } catch (Exception e) {
+            e.printStackTrace();
+            closeTx();
+            throw new PersistException("Exception during task run. Closing transaction.");
+        }
 
         if (!encapsulated) {
             transaction.apply();
