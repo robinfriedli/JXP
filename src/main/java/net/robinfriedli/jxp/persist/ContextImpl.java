@@ -196,6 +196,16 @@ public class ContextImpl implements Context {
     }
 
     @Override
+    public boolean hasUncommittedTransactions() {
+        return !uncommittedTransactions.isEmpty();
+    }
+
+    @Override
+    public List<Transaction> getUncommittedTransactions() {
+        return uncommittedTransactions;
+    }
+
+    @Override
     public <E> E invoke(boolean commit, Callable<E> task) {
         boolean encapsulated = false;
         if (transaction != null) {

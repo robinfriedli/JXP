@@ -132,6 +132,16 @@ public interface Context {
     void revertAll();
 
     /**
+     * @return true if field uncommittedTransactions is not empty
+     */
+    boolean hasUncommittedTransactions();
+
+    /**
+     * @return all saved uncommitted {@link Transaction} in this Context
+     */
+    List<Transaction> getUncommittedTransactions();
+
+    /**
      * Run a Callable in a {@link Transaction}. For any actions that create, change or delete an {@link XmlElement}.
      *
      * @param commit defines if the changes will be committed to XML file immediately after applying or remain in Context
