@@ -26,6 +26,14 @@ public interface XmlElement {
      * being created or when building the tree while initializing a new Context, meaning both the parent element
      * and this element are persisted. In that case {@link net.robinfriedli.jxp.persist.XmlPersister#isSubElementOf(XmlElement, XmlElement)}
      * will check if the parent is in fact the parent of this Element in the file.
+     *
+     * It is also possible to move a sub-element to a different parent, in which case the sub-element will be removed
+     * from the old parent, unless the old parent is in {@link State#DELETION} anyway.
+     *
+     * This method should only be used by the API. Implementers should use {@link #addSubElement(XmlElement)}. In that
+     * case and when sub-elements are passed to the constructor the API will set the parent automatically. The API also
+     * sets all parents for all existing XmlElements when initializing a new {@link Context} via the
+     * {@link net.robinfriedli.jxp.persist.DefaultPersistenceManager#buildTree(List)} method.
      */
     void setParent(XmlElement parent);
 

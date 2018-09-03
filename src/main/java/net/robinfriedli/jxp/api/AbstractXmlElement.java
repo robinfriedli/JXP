@@ -144,7 +144,11 @@ public abstract class AbstractXmlElement implements XmlElement {
             // this element has not been persisted yet, so it's safe to put it as a child
             this.parent = parent;
         } else if (this.parent != null && this.parent != parent) {
-            throw new UnsupportedOperationException("Cannot set parent. " + toString() + " already has a different parent");
+            // this element already has a different parent, remove it from the old parent
+            if (this.parent.getState() != State.DELETION) {
+                this.parent.removeSubElement(this);
+            }
+            this.parent = parent;
         } else if (this.parent != null) {
             // parent is already set, do nothing
         } else if (parent.isPersisted()) {
