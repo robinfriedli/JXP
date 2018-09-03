@@ -501,7 +501,7 @@ public abstract class AbstractXmlElement implements XmlElement {
         if (shadow == null) {
             shadow = new XmlElementShadow(this);
         } else {
-            throw new PersistException(toString() + " already has a shadow");
+            updateShadow();
         }
     }
 
