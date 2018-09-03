@@ -9,7 +9,7 @@
     <groupId>net.robinfriedli.JXP</groupId>
     <artifactId>JXP</artifactId>
     <packaging>jar</packaging>
-    <version>0.1</version>
+    <version>0.2</version>
     <build>
         <plugins>
             <plugin>

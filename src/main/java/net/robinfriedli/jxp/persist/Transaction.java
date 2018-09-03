@@ -16,15 +16,18 @@ import java.util.List;
  */
 public class Transaction {
 
+    private final Context context;
     private final List<Event> changes;
     private boolean rollback = false;
     private boolean applyOnly = false;
 
-    public Transaction(List<Event> changes) {
+    public Transaction(Context context, List<Event> changes) {
+        this.context = context;
         this.changes = changes;
     }
 
-    public Transaction(List<Event> changes, boolean applyOnly) {
+    public Transaction(Context context, List<Event> changes, boolean applyOnly) {
+        this.context = context;
         this.changes = changes;
         this.applyOnly = applyOnly;
     }
@@ -52,6 +55,8 @@ public class Transaction {
                 change.getSource().removeChange((ElementChangingEvent) change);
             }
         }
+
+        context.getManager().fireTransactionApplied(changes);
     }
 
     public void commit(DefaultPersistenceManager manager) throws CommitException {
@@ -74,6 +79,8 @@ public class Transaction {
                                 persister.persistElement(source);
                             }
                         }
+                    } else {
+                        throw new CommitException("Trying to commit a change that has not been applied.");
                     }
                 }
             } catch (CommitException e) {
@@ -82,6 +89,8 @@ public class Transaction {
                 manager.reload();
                 throw new CommitException("Exception during commit. Transaction rolled back.");
             }
+
+            context.getManager().fireTransactionCommitted(changes);
         } else {
             throw new CommitException("Trying to commit an apply-only Transaction");
         }
@@ -92,11 +101,11 @@ public class Transaction {
         changes.forEach(Event::revert);
     }
 
-    public static Transaction createTx() {
-        return new Transaction(Lists.newArrayList());
+    public static Transaction createTx(Context context) {
+        return new Transaction(context, Lists.newArrayList());
     }
 
-    public static Transaction createApplyOnlyTx() {
-        return new Transaction(Lists.newArrayList(), true);
+    public static Transaction createApplyOnlyTx(Context context) {
+        return new Transaction(context, Lists.newArrayList(), true);
     }
 }

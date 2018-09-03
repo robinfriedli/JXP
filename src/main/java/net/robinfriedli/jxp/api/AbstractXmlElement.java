@@ -130,6 +130,11 @@ public abstract class AbstractXmlElement implements XmlElement {
             throw new PersistException("Cannot persist " + toString() + ". XmlElement is not in state CONCEPTION");
         }
 
+        if (isSubElement()) {
+            throw new PersistException("Cannot persist sub-element " + toString() +
+                    ". Sub-elements are persist as ElementChangingEvent via their parent");
+        }
+
         transaction.addChange(new ElementCreatedEvent(this));
     }
 
@@ -138,13 +143,12 @@ public abstract class AbstractXmlElement implements XmlElement {
         if (!isPersisted()) {
             // this element has not been persisted yet, so it's safe to put it as a child
             this.parent = parent;
-        } else if (this.parent != null && this.parent != parent && this.parent.getState() != State.DELETION) {
-            // this element already has a different parent, remove it from the old parent
-            this.parent.removeSubElement(this);
-            this.parent = parent;
+        } else if (this.parent != null && this.parent != parent) {
+            throw new UnsupportedOperationException("Cannot set parent. " + toString() + " already has a different parent");
+        } else if (this.parent != null) {
+            // parent is already set, do nothing
         } else if (parent.isPersisted()) {
             // both parent and child already exist in the XML file
-            // TODO maybe don't verify if it ever makes sense to turn an element into a subelement
             // already do set the parent before verifying to help finding the element
             this.parent = parent;
             //verify that this is actually a subElement of parent
@@ -156,7 +160,7 @@ public abstract class AbstractXmlElement implements XmlElement {
             }
         } else {
             // this element already exists but it's parent doesn't
-            this.parent = parent;
+            throw new UnsupportedOperationException("Cannot set parent. Cannot turn " + toString() + " into sub-element");
         }
     }
 
@@ -513,12 +517,6 @@ public abstract class AbstractXmlElement implements XmlElement {
     }
 
     private void applyChange(ElementChangingEvent change, boolean isRollback) {
-        Transaction transaction = context.getTransaction();
-
-        if (transaction == null) {
-            throw new PersistException("Cannot persist changes, context has no transaction. Use Context#invoke");
-        }
-
         if (change.getSource() != this) {
             throw new UnsupportedOperationException("Source of ElementChangingEvent is not this XmlElement. Change can't be applied.");
         }

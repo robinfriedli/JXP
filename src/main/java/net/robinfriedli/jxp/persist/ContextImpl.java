@@ -298,7 +298,7 @@ public class ContextImpl implements Context {
         // save the currently ongoing transaction
         Transaction currentTx = transaction;
         // switch to a different transaction
-        transaction = Transaction.createApplyOnlyTx();
+        transaction = Transaction.createApplyOnlyTx(this);
         task.run();
         transaction.apply();
         // switch back to old transaction
@@ -325,7 +325,7 @@ public class ContextImpl implements Context {
         if (transaction != null) {
             return;
         } else {
-            transaction = Transaction.createTx();
+            transaction = Transaction.createTx(this);
         }
     }
 

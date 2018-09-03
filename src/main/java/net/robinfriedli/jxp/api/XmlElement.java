@@ -22,8 +22,10 @@ public interface XmlElement {
     void persist();
 
     /**
-     * Set the parent element for this XmlElement. Parent element can only be changed before the XmlElement has been
-     * persisted or while the elements are being loaded from the XML file -> before the element has a {@link XmlElementShadow}
+     * This method safely defines the parent of this XmlElement. This is only allowed when this XmlElement is newly
+     * being created or when building the tree while initializing a new Context, meaning both the parent element
+     * and this element are persisted. In that case {@link net.robinfriedli.jxp.persist.XmlPersister#isSubElementOf(XmlElement, XmlElement)}
+     * will check if the parent is in fact the parent of this Element in the file.
      */
     void setParent(XmlElement parent);
 

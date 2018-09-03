@@ -1,10 +1,7 @@
 package net.robinfriedli.jxp.persist;
 
 import com.google.common.collect.Lists;
-import net.robinfriedli.jxp.events.ElementChangingEvent;
-import net.robinfriedli.jxp.events.ElementCreatedEvent;
-import net.robinfriedli.jxp.events.ElementDeletingEvent;
-import net.robinfriedli.jxp.events.EventListener;
+import net.robinfriedli.jxp.events.*;
 
 import javax.annotation.Nullable;
 
@@ -13,7 +10,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Manager to retrieve {@link Context}
+ * Manager to retrieve {@link Context} and register {@link EventListener}s
  */
 public class ContextManager {
 
@@ -115,6 +112,10 @@ public class ContextManager {
         listeners.add(listener);
     }
 
+    public void removeListener(EventListener listener) {
+        listeners.remove(listener);
+    }
+
     public void fireElementCreating(ElementCreatedEvent event) {
         listeners.forEach(listener -> listener.elementCreating(event));
     }
@@ -125,6 +126,14 @@ public class ContextManager {
 
     public void fireElementChanging(ElementChangingEvent event) {
         listeners.forEach(listener -> listener.elementChanging(event));
+    }
+
+    public void fireTransactionApplied(List<Event> events) {
+        listeners.forEach(listener -> listener.transactionApplied(events));
+    }
+
+    public void fireTransactionCommitted(List<Event> events) {
+        listeners.forEach(listener -> listener.transactionCommitted(events));
     }
 
 }
