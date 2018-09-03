@@ -117,23 +117,53 @@ public class ContextManager {
     }
 
     public void fireElementCreating(ElementCreatedEvent event) {
-        listeners.forEach(listener -> listener.elementCreating(event));
+        listeners.forEach(listener -> {
+            try {
+                listener.elementCreating(event);
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+        });
     }
 
     public void fireElementDeleting(ElementDeletingEvent event) {
-        listeners.forEach(listener -> listener.elementDeleting(event));
+        listeners.forEach(listener -> {
+            try {
+                listener.elementDeleting(event);
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+        });
     }
 
     public void fireElementChanging(ElementChangingEvent event) {
-        listeners.forEach(listener -> listener.elementChanging(event));
+        listeners.forEach(listener -> {
+            try {
+                listener.elementChanging(event);
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+        });
     }
 
     public void fireTransactionApplied(List<Event> events, Context context) {
-        listeners.forEach(listener -> listener.transactionApplied(events, context));
+        listeners.forEach(listener -> {
+            try {
+                listener.transactionApplied(events, context);
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+        });
     }
 
     public void fireTransactionCommitted(List<Event> events, Context context) {
-        listeners.forEach(listener -> listener.transactionCommitted(events, context));
+        listeners.forEach(listener -> {
+            try {
+                listener.transactionCommitted(events, context);
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+        });
     }
 
 }
