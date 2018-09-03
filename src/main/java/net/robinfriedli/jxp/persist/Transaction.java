@@ -56,7 +56,7 @@ public class Transaction {
             }
         }
 
-        context.getManager().fireTransactionApplied(changes);
+        context.getManager().fireTransactionApplied(changes, context);
     }
 
     public void commit(DefaultPersistenceManager manager) throws CommitException {
@@ -90,7 +90,7 @@ public class Transaction {
                 throw new CommitException("Exception during commit. Transaction rolled back.");
             }
 
-            context.getManager().fireTransactionCommitted(changes);
+            context.getManager().fireTransactionCommitted(changes, context);
         } else {
             throw new CommitException("Trying to commit an apply-only Transaction");
         }

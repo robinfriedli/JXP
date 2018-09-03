@@ -128,12 +128,12 @@ public class ContextManager {
         listeners.forEach(listener -> listener.elementChanging(event));
     }
 
-    public void fireTransactionApplied(List<Event> events) {
-        listeners.forEach(listener -> listener.transactionApplied(events));
+    public void fireTransactionApplied(List<Event> events, Context context) {
+        listeners.forEach(listener -> listener.transactionApplied(events, context));
     }
 
-    public void fireTransactionCommitted(List<Event> events) {
-        listeners.forEach(listener -> listener.transactionCommitted(events));
+    public void fireTransactionCommitted(List<Event> events, Context context) {
+        listeners.forEach(listener -> listener.transactionCommitted(events, context));
     }
 
 }

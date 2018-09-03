@@ -1,6 +1,8 @@
 package net.robinfriedli.jxp.events;
 
 
+import net.robinfriedli.jxp.persist.Context;
+
 import java.util.List;
 
 public abstract class EventListener {
@@ -34,7 +36,7 @@ public abstract class EventListener {
      *
      * @param events all {@link Event}s that were applied
      */
-    public void transactionApplied(List<Event> events) {
+    public void transactionApplied(List<Event> events, Context context) {
     }
 
     /**
@@ -42,7 +44,7 @@ public abstract class EventListener {
      *
      * @param events all {@link Event}s that were committed
      */
-    public void transactionCommitted(List<Event> events) {
+    public void transactionCommitted(List<Event> events, Context context) {
     }
 
 }
