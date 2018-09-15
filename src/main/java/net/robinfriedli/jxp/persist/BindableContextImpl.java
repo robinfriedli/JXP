@@ -37,6 +37,6 @@ public class BindableContextImpl<E> extends ContextImpl implements Context.Binda
             }
         }
 
-        return Arrays.toString(chars);
+        return String.join("", chars);
     }
 }
