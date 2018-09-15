@@ -10,6 +10,7 @@ import net.robinfriedli.jxp.exceptions.CommitException;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Holds all {@link Event} that are currently being applied. Makes commits and rollbacks easier.
@@ -44,6 +45,31 @@ public class Transaction {
         addChanges(Arrays.asList(changes));
     }
 
+    public List<Event> getChanges() {
+        return changes;
+    }
+
+    public List<ElementCreatedEvent> getCreatedElements() {
+        return changes.stream()
+                .filter(change -> change instanceof ElementCreatedEvent)
+                .map(change -> (ElementCreatedEvent) change)
+                .collect(Collectors.toList());
+    }
+
+    public List<ElementChangingEvent> getElementChanges() {
+        return changes.stream()
+                .filter(change -> change instanceof ElementChangingEvent)
+                .map(change -> (ElementChangingEvent) change)
+                .collect(Collectors.toList());
+    }
+
+    public List<ElementDeletingEvent> getDeletedElements() {
+        return changes.stream()
+                .filter(change -> change instanceof ElementDeletingEvent)
+                .map(change -> (ElementDeletingEvent) change)
+                .collect(Collectors.toList());
+    }
+
     public boolean isRollback() {
         return rollback;
     }
@@ -56,7 +82,7 @@ public class Transaction {
             }
         }
 
-        context.getManager().fireTransactionApplied(changes, context);
+        context.getManager().fireTransactionApplied(this);
     }
 
     public void commit(DefaultPersistenceManager manager) throws CommitException {
@@ -90,7 +116,7 @@ public class Transaction {
                 throw new CommitException("Exception during commit. Transaction rolled back.");
             }
 
-            context.getManager().fireTransactionCommitted(changes, context);
+            context.getManager().fireTransactionCommitted(this);
         } else {
             throw new CommitException("Trying to commit an apply-only Transaction");
         }

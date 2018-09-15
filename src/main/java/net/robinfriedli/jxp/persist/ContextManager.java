@@ -146,20 +146,20 @@ public class ContextManager {
         });
     }
 
-    public void fireTransactionApplied(List<Event> events, Context context) {
+    public void fireTransactionApplied(Transaction transaction) {
         listeners.forEach(listener -> {
             try {
-                listener.transactionApplied(events, context);
+                listener.transactionApplied(transaction);
             } catch (Throwable e) {
                 e.printStackTrace();
             }
         });
     }
 
-    public void fireTransactionCommitted(List<Event> events, Context context) {
+    public void fireTransactionCommitted(Transaction transaction) {
         listeners.forEach(listener -> {
             try {
-                listener.transactionCommitted(events, context);
+                listener.transactionCommitted(transaction);
             } catch (Throwable e) {
                 e.printStackTrace();
             }

@@ -1,9 +1,7 @@
 package net.robinfriedli.jxp.events;
 
 
-import net.robinfriedli.jxp.persist.Context;
-
-import java.util.List;
+import net.robinfriedli.jxp.persist.Transaction;
 
 public abstract class EventListener {
 
@@ -34,17 +32,17 @@ public abstract class EventListener {
     /**
      * Fired after a {@link net.robinfriedli.jxp.persist.Transaction} has been applied (to the in memory elements)
      *
-     * @param events all {@link Event}s that were applied
+     * @param transaction the transaction that has been applied
      */
-    public void transactionApplied(List<Event> events, Context context) {
+    public void transactionApplied(Transaction transaction) {
     }
 
     /**
      * Fired after a {@link net.robinfriedli.jxp.persist.Transaction} has been committed (to the XML file)
      *
-     * @param events all {@link Event}s that were committed
+     * @param transaction the transaction that has been committed
      */
-    public void transactionCommitted(List<Event> events, Context context) {
+    public void transactionCommitted(Transaction transaction) {
     }
 
 }
