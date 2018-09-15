@@ -33,6 +33,10 @@ public class Transaction {
         this.applyOnly = applyOnly;
     }
 
+    public Context getContext() {
+        return context;
+    }
+
     public void addChange(Event change) {
         changes.add(change);
     }
