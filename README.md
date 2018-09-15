@@ -154,7 +154,7 @@ optional third parameter: any Object to set as this Context's environment variab
 
 The quickest way to add a new XmlElement to the file:
 ```java
-    context.invoke(true, () -> new Country("Italia", "Italy", true, Lists.newArrayList(rome, florence, venice), context));
+    context.invoke(true, () -> new Country("Italia", "Italy", true, Lists.newArrayList(rome, florence, venice), context).persist());
 ```
 The environment variable can be anything you might need somewhere els in context with this transaction.
 E.g. say you're developing a Discord bot and you've implemented an EventListener that sends a message
