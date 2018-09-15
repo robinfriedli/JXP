@@ -2,7 +2,7 @@
 Java XML Persistence API
 
 ## Maven
-
+```xml
     <repository>
       <id>JXP</id>
       <url>https://raw.github.com/robinfriedli/JXP/repository/</url>
@@ -11,9 +11,9 @@ Java XML Persistence API
     <dependency>
       <groupId>net.robinfriedli.JXP</groupId>
       <artifactId>JXP</artifactId>
-      <version>0.2</version>
+      <version>0.3</version>
     </dependency>
-
+```
 ## AbstractXmlElement and BaseXmlElement
 
 AbstractXmlElement is the class to extend for any class you want to persist to an XML file. Its default implementation,
@@ -215,16 +215,16 @@ The EventListener offers 3 methods that get fired when the corresponding Event g
     /**
      * Fired after a {@link net.robinfriedli.jxp.persist.Transaction} has been applied (to the in memory elements)
      *
-     * @param events all {@link Event}s that were applied
+     * @param transaction the transaction that has been applied
      */
-    public void transactionApplied(List<Event> events) {
+    public void transactionApplied(Transaction transaction) {
     }
 
     /**
      * Fired after a {@link net.robinfriedli.jxp.persist.Transaction} has been committed (to the XML file)
      *
-     * @param events all {@link Event}s that were committed
+     * @param transaction the transaction that has been committed
      */
-    public void transactionCommitted(List<Event> events) {
+    public void transactionCommitted(Transaction transaction) {
     }
 ```
