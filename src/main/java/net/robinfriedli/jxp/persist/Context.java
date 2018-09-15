@@ -232,7 +232,9 @@ public interface Context {
     Transaction getTransaction();
 
     /**
-     * Partitionable Context that can be bound to object of Type E
+     * Partitionable Context that can be bound to an object of Type E. The Context can then be retrieved from the
+     * ContextManager via the {@link ContextManager#getContext(Object)} method, this checks whether the passed object
+     * equals the BindableContext's boundObject, it does not have to be the same object.
      *
      * @param <E> Type the Context may be bound to
      */
@@ -244,14 +246,6 @@ public interface Context {
          * @return object of Type E
          */
         E getBindingObject();
-
-        /**
-         * The BindableContext should have an id the Context can consistently by identified with so that its XML file
-         * can be loaded. Ideally the Object the BindableContext is bound to should have some sort of id.
-         *
-         * @return id of BindableContext, used as part of filename
-         */
-        String getId();
 
     }
 

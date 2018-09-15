@@ -1,26 +1,20 @@
 package net.robinfriedli.jxp.persist;
 
 import java.io.File;
+import java.util.Arrays;
 
 public class BindableContextImpl<E> extends ContextImpl implements Context.BindableContext<E> {
 
     private final E boundObject;
-    private final String id;
 
-    public BindableContextImpl(ContextManager manager, E boundObject, String id, DefaultPersistenceManager persistenceManager) {
-        super(manager, persistenceManager, buildPath(manager, id));
+    public BindableContextImpl(ContextManager manager, E boundObject, DefaultPersistenceManager persistenceManager) {
+        super(manager, persistenceManager, buildPath(manager, boundObject.toString()));
         this.boundObject = boundObject;
-        this.id = id;
     }
 
     @Override
     public E getBindingObject() {
         return boundObject;
-    }
-
-    @Override
-    public String getId() {
-        return id;
     }
 
     private static String buildPath(ContextManager manager, String id) {
@@ -30,6 +24,19 @@ public class BindableContextImpl<E> extends ContextImpl implements Context.Binda
         int lastElemIndex = pathElems.length - 1;
         String lastElem = pathElems[lastElemIndex];
         pathElems[lastElemIndex] = id + lastElem;
-        return String.join(File.separator, pathElems);
+        String path = String.join(File.separator, pathElems);
+        return replaceWhiteSpace(path);
+    }
+
+    private static String replaceWhiteSpace(String s) {
+        String[] chars = s.split("(?!^)");
+
+        for (int i = 0; i < chars.length; i++) {
+            if (chars[i].equals(" ")) {
+                chars[i] = "-";
+            }
+        }
+
+        return Arrays.toString(chars);
     }
 }

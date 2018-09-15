@@ -247,38 +247,10 @@ public class ContextImpl implements Context {
 
     @Override
     public void invoke(boolean commit, Runnable task) {
-        boolean encapsulated = false;
-        if (transaction != null) {
-            encapsulated = true;
-        } else {
-            getTx();
-        }
-
-        try {
+        invoke(commit, () -> {
             task.run();
-        } catch (Exception e) {
-            e.printStackTrace();
-            closeTx();
-            throw new PersistException("Exception during task run. Closing transaction.");
-        }
-
-        if (!encapsulated) {
-            transaction.apply();
-            if (commit) {
-                try {
-                    transaction.commit(persistenceManager);
-                    persistenceManager.write();
-                } catch (CommitException e) {
-                    e.printStackTrace();
-                }
-            } else {
-                uncommittedTransactions.add(transaction);
-            }
-        }
-
-        if (!encapsulated) {
-            closeTx();
-        }
+            return null;
+        });
     }
 
     @Override
