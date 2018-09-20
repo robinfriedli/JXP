@@ -104,7 +104,7 @@ public class DefaultPersistenceManager {
             xmlPersister.setAttributes(element, attributesToChange);
             element.updateShadow();
         }
-        if (element.textContentChanged()) {
+        if (event.textContentChanged()) {
             xmlPersister.setTextContent(element);
             element.updateShadow();
         }

@@ -1,14 +1,14 @@
 package net.robinfriedli.jxp.api;
 
+import java.util.List;
+
+import javax.annotation.Nullable;
+
 import net.robinfriedli.jxp.events.ElementChangingEvent;
 import net.robinfriedli.jxp.events.ValueChangingEvent;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.persist.Context;
 import net.robinfriedli.jxp.persist.XmlElementShadow;
-
-import javax.annotation.Nullable;
-
-import java.util.List;
 
 /**
  * Enables classes to be persisted as XML elements. Extend {@link AbstractXmlElement} to persist your elements using
@@ -154,6 +154,13 @@ public interface XmlElement {
     XmlElement getSubElement(String id);
 
     /**
+     * Same as {@link #getSubElement(String)} but also checks whether the sub element matches the given type and casts
+     * it to it
+     */
+    @Nullable
+    <E extends XmlElement> E getSubElement(String id, Class<E> type);
+
+    /**
      * Like {@link #getSubElement(String)} but throws {@link IllegalStateException} if none is found
      *
      * @param id unique id to find the subElement with
@@ -161,6 +168,12 @@ public interface XmlElement {
      * @throws IllegalStateException if no subElement is found
      */
     XmlElement requireSubElement(String id) throws IllegalStateException;
+
+    /**
+     * Same as {@link #requireSubElement(String)} but also checks whether the sub element matches the given type and casts
+     * it to it
+     */
+    <E extends XmlElement> E requireSubElement(String id, Class<E> type) throws IllegalStateException;
 
     /**
      * @return true if this XmlElement has any SubElements
@@ -285,10 +298,11 @@ public interface XmlElement {
 
     /**
      * Returns the first {@link ElementChangingEvent} of this XmlElement that has not been persisted yet. Used to identify
-     * this XmlElement within the XML file.
+     * this XmlElement within the XML file. At least before {@link XmlElementShadow} was introduced.
      *
      * @return first {@link ElementChangingEvent}
      */
+    @Deprecated
     ElementChangingEvent getFirstChange();
 
     /**
@@ -296,6 +310,7 @@ public interface XmlElement {
      *
      * @return last {@link ElementChangingEvent}
      */
+    @Deprecated
     ElementChangingEvent getLastChange();
 
     /**
@@ -304,6 +319,7 @@ public interface XmlElement {
      * @param attributeName name of attribute
      * @return first change made to specified attribute since last commit
      */
+    @Deprecated
     ValueChangingEvent<XmlAttribute> getFirstAttributeChange(String attributeName);
 
     /**
@@ -312,6 +328,7 @@ public interface XmlElement {
      * @param attributeName name of attribute
      * @return last change made to specified attribute since last commit
      */
+    @Deprecated
     ValueChangingEvent<XmlAttribute> getLastAttributeChange(String attributeName);
 
     /**
@@ -325,6 +342,7 @@ public interface XmlElement {
     /**
      * @return first uncommitted change made to the XmlElement's text content
      */
+    @Deprecated
     ValueChangingEvent<String> getFirstTextContentChange();
 
     /**
@@ -336,6 +354,7 @@ public interface XmlElement {
      * Clear all {@link ElementChangingEvent} on this XmlElement. Changes are cleared on commit but applied to the in
      * memory XmlElement after adding.
      */
+    @Deprecated
     void clearChanges();
 
     /**

@@ -19,8 +19,9 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Abstract class to extend for classes you wish to able to persist to XML file.
- * Classes that extend this class can be persisted via the {@link net.robinfriedli.jxp.persist.DefaultPersistenceManager}
+ * Abstract class to extend for classes you wish to able to persist to an XML file.
+ * Classes that extend this class can be persisted via the {@link net.robinfriedli.jxp.persist.Context#invoke(boolean, Runnable)}
+ * method using {@link #persist()}
  */
 public abstract class AbstractXmlElement implements XmlElement {
 
@@ -132,7 +133,7 @@ public abstract class AbstractXmlElement implements XmlElement {
 
         if (isSubElement()) {
             throw new PersistException("Cannot persist sub-element " + toString() +
-                    ". Sub-elements are persist as ElementChangingEvent via their parent");
+                ". Sub-elements are persist as ElementChangingEvent via their parent");
         }
 
         transaction.addChange(new ElementCreatedEvent(this));
@@ -275,8 +276,14 @@ public abstract class AbstractXmlElement implements XmlElement {
 
     @Override
     public XmlElement getSubElement(String id) {
-        List<XmlElement> foundSubElements = getSubElements().stream()
-            .filter(subElem -> subElem.getId() != null && subElem.getId().equals(id))
+        return getSubElement(id, XmlElement.class);
+    }
+
+    @Override
+    public <E extends XmlElement> E getSubElement(String id, Class<E> type) {
+        List<E> foundSubElements = getSubElements().stream()
+            .filter(subElem -> type.isInstance(subElem) && subElem.getId() != null && subElem.getId().equals(id))
+            .map(type::cast)
             .collect(Collectors.toList());
 
         if (foundSubElements.size() == 1) {
@@ -290,7 +297,12 @@ public abstract class AbstractXmlElement implements XmlElement {
 
     @Override
     public XmlElement requireSubElement(String id) throws IllegalStateException {
-        XmlElement subElement = getSubElement(id);
+        return requireSubElement(id, XmlElement.class);
+    }
+
+    @Override
+    public <E extends XmlElement> E requireSubElement(String id, Class<E> type) throws IllegalStateException {
+        E subElement = getSubElement(id, type);
 
         if (subElement != null) {
             return subElement;

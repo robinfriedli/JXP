@@ -214,11 +214,11 @@ public class XmlPersister {
         return Lists.newArrayList();
     }
 
-    public List<Element> find(String tagName, String attrbuteName, String attributeValue, XmlElement parent) {
+    public List<Element> find(String tagName, String attributeName, String attributeValue, XmlElement parent) {
         try {
             Element element = requireElement(parent);
             List<Element> elements = nodeListToElementList(element.getElementsByTagName(tagName));
-            return elements.stream().filter(elem -> elem.getAttribute(attrbuteName).equals(attributeValue)).collect(Collectors.toList());
+            return elements.stream().filter(elem -> elem.getAttribute(attributeName).equals(attributeValue)).collect(Collectors.toList());
         } catch (CommitException e) {
             e.printStackTrace();
         }

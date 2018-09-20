@@ -1,7 +1,6 @@
 package net.robinfriedli.jxp.persist;
 
 import java.io.File;
-import java.util.Arrays;
 
 public class BindableContextImpl<E> extends ContextImpl implements Context.BindableContext<E> {
 

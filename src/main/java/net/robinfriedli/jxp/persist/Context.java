@@ -67,7 +67,12 @@ public interface Context {
      * @param id to find the {@link XmlElement} with
      * @return found {@link XmlElement}
      */
-    XmlElement requireElement(String id);
+    XmlElement requireElement(String id) throws IllegalStateException;
+
+    /**
+     * same as {@link #requireElement(String)} but checks if the element matches the passed type and casts it to it
+     */
+    <E extends XmlElement> E requireElement(String id, Class<E> type) throws IllegalStateException;
 
     /**
      * Get all XmlElements saved in this Context that are instance of {@link E}

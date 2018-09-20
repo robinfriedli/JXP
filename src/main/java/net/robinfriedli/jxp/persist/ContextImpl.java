@@ -71,25 +71,14 @@ public class ContextImpl implements Context {
     @Override
     @Nullable
     public XmlElement getElement(String id) {
-        List<XmlElement> foundElements = getUsableElements().stream().filter(element ->
-            element.getId() != null && element.getId().equals(id)
-        ).collect(Collectors.toList());
-
-        if (foundElements.size() == 1) {
-            return foundElements.get(0);
-        } else if (foundElements.size() > 1) {
-            throw new IllegalStateException("Id: " + id + " not unique. Element loading failed. " +
-                "Add Elements using the #invoke method via the PersistenceManager instead of adding to Context directly");
-        } else {
-            return null;
-        }
+        return getElement(id, XmlElement.class);
     }
 
     @Override
     @Nullable
     public <E extends XmlElement> E getElement(String id, Class<E> type) {
         List<E> foundElements = getUsableElements().stream()
-            .filter(element -> element.getId() != null && element.getId().equals(id) && type.isInstance(element))
+            .filter(element -> type.isInstance(element) && element.getId() != null && element.getId().equals(id))
             .map(type::cast)
             .collect(Collectors.toList());
 
@@ -104,8 +93,13 @@ public class ContextImpl implements Context {
     }
 
     @Override
-    public XmlElement requireElement(String id) {
-        XmlElement element = getElement(id);
+    public XmlElement requireElement(String id) throws IllegalStateException {
+        return requireElement(id, XmlElement.class);
+    }
+
+    @Override
+    public <E extends XmlElement> E requireElement(String id, Class<E> type) throws IllegalStateException {
+        E element = getElement(id, type);
 
         if (element != null) {
             return element;
@@ -218,10 +212,9 @@ public class ContextImpl implements Context {
 
         try {
             returnValue = task.call();
-        } catch (Exception e) {
-            e.printStackTrace();
+        } catch (Throwable e) {
             closeTx();
-            throw new PersistException("Exception during task run. Closing transaction.");
+            throw new PersistException(e.getClass().getName() + " thrown during task run. Closing transaction.", e);
         }
 
         if (!encapsulated) {
@@ -271,7 +264,14 @@ public class ContextImpl implements Context {
         Transaction currentTx = transaction;
         // switch to a different transaction
         transaction = Transaction.createApplyOnlyTx(this);
-        task.run();
+
+        try {
+            task.run();
+        } catch (Throwable e) {
+            transaction = currentTx;
+            throw new PersistException(e.getClass().getName() + " thrown during task run. Closing transaction.", e);
+        }
+
         transaction.apply();
         // switch back to old transaction
         transaction = currentTx;

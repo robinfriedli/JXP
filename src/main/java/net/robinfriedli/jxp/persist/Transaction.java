@@ -10,10 +10,13 @@ import net.robinfriedli.jxp.exceptions.CommitException;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 
 /**
- * Holds all {@link Event} that are currently being applied. Makes commits and rollbacks easier.
+ * Holds all {@link Event}s that have been created within the current {@link Context#invoke(boolean, Callable)} method
+ * call and applies them to the in memory elements after the Runnable / Callable is done and, if commit is true, saves
+ * them to the XML file. Also reverts changes if the transaction failed.
  */
 public class Transaction {
 
@@ -114,10 +117,9 @@ public class Transaction {
                     }
                 }
             } catch (CommitException e) {
-                e.printStackTrace();
                 rollback();
                 manager.reload();
-                throw new CommitException("Exception during commit. Transaction rolled back.");
+                throw new CommitException("Exception during commit. Transaction rolled back.", e);
             }
 
             context.getManager().fireTransactionCommitted(this);
