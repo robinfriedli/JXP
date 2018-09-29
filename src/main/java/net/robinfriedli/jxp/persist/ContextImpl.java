@@ -138,12 +138,8 @@ public class ContextImpl implements Context {
     @Override
     public void addElements(List<XmlElement> elements) {
         for (XmlElement element : elements) {
-            if (element.isLocked()) {
-                throw new PersistException("Attempting to add locked XmlElement to Context. Probably duplicate.");
-            }
             if (element.getId() != null && getElement(element.getId()) != null) {
-                throw new PersistException("Attempting to add duplicate XmlElement to Context." +
-                    " Use DefaultPersistenceManager#castElement to adjust the existing element to the new one");
+                throw new PersistException("There already is an element with id " + element.getId() + " in this Context");
             }
             inMemoryElements.add(element);
         }

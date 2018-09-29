@@ -1,6 +1,7 @@
 package net.robinfriedli.jxp.api;
 
 import com.google.common.collect.Lists;
+import net.robinfriedli.jxp.events.AttributeChangingEvent;
 import net.robinfriedli.jxp.events.ElementChangingEvent;
 import net.robinfriedli.jxp.events.ElementCreatedEvent;
 import net.robinfriedli.jxp.events.ElementDeletingEvent;
@@ -240,7 +241,7 @@ public abstract class AbstractXmlElement implements XmlElement {
     @Override
     public void addSubElements(List<XmlElement> elements) {
         elements.forEach(elem -> elem.setParent(this));
-        addChange(new ElementChangingEvent(this, elements, null));
+        addChange(ElementChangingEvent.subElementsAdded(this, elements));
     }
 
     @Override
@@ -255,7 +256,7 @@ public abstract class AbstractXmlElement implements XmlElement {
 
     @Override
     public void removeSubElements(List<XmlElement> elements) {
-        addChange(new ElementChangingEvent(this, null, elements));
+        addChange(ElementChangingEvent.subElementsRemoved(this, elements));
     }
 
     @Override
@@ -330,7 +331,7 @@ public abstract class AbstractXmlElement implements XmlElement {
     public void setTextContent(String textContent) {
         String oldValue = String.valueOf(getTextContent());
         ValueChangingEvent<String> valueChangingEvent = new ValueChangingEvent<>(this, oldValue, textContent);
-        addChange(new ElementChangingEvent(this, valueChangingEvent));
+        addChange(ElementChangingEvent.textContentChange(valueChangingEvent));
     }
 
     @Override
@@ -347,16 +348,20 @@ public abstract class AbstractXmlElement implements XmlElement {
 
     @Override
     public void delete() {
-        Transaction transaction = context.getTransaction();
+        if (!isLocked()) {
+            Transaction transaction = context.getTransaction();
 
-        if (transaction == null) {
-            throw new PersistException("Context has no transaction. Use Context#invoke");
-        }
+            if (transaction == null) {
+                throw new PersistException("Context has no transaction. Use Context#invoke");
+            }
 
-        if (isSubElement()) {
-            getParent().removeSubElement(this);
+            if (isSubElement()) {
+                getParent().removeSubElement(this);
+            } else {
+                transaction.addChange(new ElementDeletingEvent(this, getState()));
+            }
         } else {
-            transaction.addChange(new ElementDeletingEvent(this, getState()));
+            throw new PersistException("Unable to delete. " + toString() + " is locked");
         }
     }
 
@@ -379,7 +384,7 @@ public abstract class AbstractXmlElement implements XmlElement {
                 change.apply();
             }
         } else {
-            throw new PersistException("Unable to add Change. " + toString() + " is locked, probably duplicate.");
+            throw new PersistException("Unable to add Change. " + toString() + " is locked.");
         }
     }
 
@@ -404,10 +409,6 @@ public abstract class AbstractXmlElement implements XmlElement {
 
     @Override
     public List<ElementChangingEvent> getChanges() {
-        if (getState() != State.TOUCHED) {
-            throw new UnsupportedOperationException("Trying to call getChanges() on an XmlElement that is not in State TOUCHED but "
-                + getState().toString());
-        }
         return this.changes;
     }
 
@@ -416,19 +417,22 @@ public abstract class AbstractXmlElement implements XmlElement {
         return changes != null && !changes.isEmpty();
     }
 
+    @Deprecated
     @Override
     public ElementChangingEvent getFirstChange() {
         return hasChanges() ? getChanges().get(0) : null;
     }
 
+    @Deprecated
     @Override
     public ElementChangingEvent getLastChange() {
         List<ElementChangingEvent> changes = getChanges();
         return hasChanges() ? changes.get(changes.size() - 1) : null;
     }
 
+    @Deprecated
     @Override
-    public ValueChangingEvent<XmlAttribute> getFirstAttributeChange(String attributeName) {
+    public AttributeChangingEvent getFirstAttributeChange(String attributeName) {
         if (!hasAttribute(attributeName)) {
             throw new IllegalArgumentException(toString() + " does not have an attribute named " + attributeName);
         }
@@ -444,13 +448,14 @@ public abstract class AbstractXmlElement implements XmlElement {
         return null;
     }
 
+    @Deprecated
     @Override
-    public ValueChangingEvent<XmlAttribute> getLastAttributeChange(String attributeName) {
+    public AttributeChangingEvent getLastAttributeChange(String attributeName) {
         if (!hasAttribute(attributeName)) {
             throw new IllegalArgumentException(toString() + " does not have an attribute named " + attributeName);
         }
 
-        ValueChangingEvent<XmlAttribute> attributeChange = null;
+        AttributeChangingEvent attributeChange = null;
         if (hasChanges()) {
             for (ElementChangingEvent change : getChanges()) {
                 if (change.attributeChanged(attributeName)) {
@@ -467,6 +472,7 @@ public abstract class AbstractXmlElement implements XmlElement {
         return getFirstAttributeChange(attributeName) != null;
     }
 
+    @Deprecated
     @Override
     public ValueChangingEvent<String> getFirstTextContentChange() {
         for (ElementChangingEvent change : getChanges()) {
@@ -483,6 +489,7 @@ public abstract class AbstractXmlElement implements XmlElement {
         return getFirstTextContentChange() != null;
     }
 
+    @Deprecated
     @Override
     public void clearChanges() {
         this.changes.clear();
@@ -503,9 +510,20 @@ public abstract class AbstractXmlElement implements XmlElement {
         return shadow;
     }
 
+    @Deprecated
     @Override
     public void updateShadow() {
         shadow.update();
+    }
+
+    @Override
+    public void updateShadow(ElementChangingEvent change) {
+        shadow.adopt(change);
+    }
+
+    @Override
+    public void revertShadow(ElementChangingEvent change) {
+        shadow.revert(change);
     }
 
     @Override
@@ -513,7 +531,7 @@ public abstract class AbstractXmlElement implements XmlElement {
         if (shadow == null) {
             shadow = new XmlElementShadow(this);
         } else {
-            updateShadow();
+            throw new PersistException(toString() + " already has a shadow");
         }
     }
 
@@ -538,20 +556,12 @@ public abstract class AbstractXmlElement implements XmlElement {
         }
 
         if (change.getChangedAttributes() != null) {
-            for (ValueChangingEvent<XmlAttribute> changedAttribute : change.getChangedAttributes()) {
-                XmlAttribute oldValue = changedAttribute.getOldValue();
-                XmlAttribute newValue = changedAttribute.getNewValue();
-
-                if (oldValue.getAttributeName().equals(newValue.getAttributeName())) {
-                    XmlAttribute attributeToChange = getAttribute(oldValue.getAttributeName());
-                    if (isRollback) {
-                        attributeToChange.revertChange(changedAttribute);
-                    } else {
-                        attributeToChange.applyChange(changedAttribute);
-                    }
+            for (AttributeChangingEvent changedAttribute : change.getChangedAttributes()) {
+                XmlAttribute attributeToChange = changedAttribute.getAttribute();
+                if (isRollback) {
+                    attributeToChange.revertChange(changedAttribute);
                 } else {
-                    throw new UnsupportedOperationException("Cannot apply malformed ValueChangingEvent. " +
-                        "OldValue and newValue do not refer to the same attribute");
+                    attributeToChange.applyChange(changedAttribute);
                 }
             }
         }

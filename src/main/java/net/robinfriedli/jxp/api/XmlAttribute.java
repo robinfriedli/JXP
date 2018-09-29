@@ -1,8 +1,7 @@
 package net.robinfriedli.jxp.api;
 
-import com.google.common.collect.Lists;
+import net.robinfriedli.jxp.events.AttributeChangingEvent;
 import net.robinfriedli.jxp.events.ElementChangingEvent;
-import net.robinfriedli.jxp.events.ValueChangingEvent;
 
 public class XmlAttribute {
 
@@ -30,20 +29,18 @@ public class XmlAttribute {
     }
 
     public void setValue(String value) {
-        XmlAttribute newValue = new XmlAttribute(parentElement, attributeName, value);
-        ValueChangingEvent<XmlAttribute> changedAttribute = new ValueChangingEvent<>(parentElement, this, newValue);
-        parentElement.addChange(new ElementChangingEvent(parentElement, Lists.newArrayList(changedAttribute)));
+        parentElement.addChange(ElementChangingEvent.attributeChange(new AttributeChangingEvent(this, value)));
     }
 
     public String getValue() {
         return this.value;
     }
 
-    public void applyChange(ValueChangingEvent<XmlAttribute> change) throws UnsupportedOperationException {
+    public void applyChange(AttributeChangingEvent change) throws UnsupportedOperationException {
         applyChange(change, false);
     }
 
-    public void revertChange(ValueChangingEvent<XmlAttribute> change) {
+    public void revertChange(AttributeChangingEvent change) {
         applyChange(change, true);
     }
 
@@ -52,21 +49,13 @@ public class XmlAttribute {
         return "XmlAttribute:" + getAttributeName() + "@" + getParentElement().getTagName();
     }
 
-    private void applyChange(ValueChangingEvent<XmlAttribute> change, boolean isRollback) {
-        if (change.getSource() != parentElement) {
-            throw new UnsupportedOperationException("Change can't be applied to XmlAttribute since the source of the change is not its parent");
-        }
-
-        if (change.getOldValue() != this) {
+    private void applyChange(AttributeChangingEvent change, boolean isRollback) {
+        if (change.getAttribute() != this) {
             throw new UnsupportedOperationException("Change can't be applied to this XmlAttribute since the change does not refer to this attribute");
         }
 
-        if (!change.getNewValue().getAttributeName().equals(this.getAttributeName())) {
-            throw new UnsupportedOperationException("Cannot apply malformed ValueChangingEvent. " +
-                "OldValue and newValue do not refer to the same attribute type");
-        }
-
-        this.value = isRollback ? change.getOldValue().getValue() : change.getNewValue().getValue();
+        this.value = isRollback ? change.getOldValue() : change.getNewValue();
+        change.setApplied(true);
     }
 
 }

@@ -11,7 +11,7 @@ Java XML Persistence API
     <dependency>
       <groupId>net.robinfriedli.JXP</groupId>
       <artifactId>JXP</artifactId>
-      <version>0.3</version>
+      <version>0.4</version>
     </dependency>
 ```
 ## AbstractXmlElement and BaseXmlElement

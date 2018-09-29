@@ -1,13 +1,13 @@
 package net.robinfriedli.jxp.persist;
 
-import com.google.common.collect.Lists;
-import net.robinfriedli.jxp.events.*;
-
-import javax.annotation.Nullable;
-
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
+
+import com.google.common.collect.Lists;
+import net.robinfriedli.jxp.events.ElementChangingEvent;
+import net.robinfriedli.jxp.events.ElementCreatedEvent;
+import net.robinfriedli.jxp.events.ElementDeletingEvent;
+import net.robinfriedli.jxp.events.EventListener;
 
 /**
  * Manager to retrieve {@link Context} and register {@link EventListener}s

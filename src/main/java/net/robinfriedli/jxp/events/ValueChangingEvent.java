@@ -2,7 +2,7 @@ package net.robinfriedli.jxp.events;
 
 import net.robinfriedli.jxp.api.XmlElement;
 
-public class ValueChangingEvent<V> extends Event {
+public class ValueChangingEvent<V> extends HelperEvent {
 
     private final V oldValue;
     private final V newValue;
@@ -19,15 +19,5 @@ public class ValueChangingEvent<V> extends Event {
 
     public V getNewValue() {
         return newValue;
-    }
-
-    @Override
-    public void apply() {
-        // do nothing, this is a helper Class for ElementChangingEvent
-    }
-
-    @Override
-    public void revert() {
-        // do nothing, this is a helper Class for ElementChangingEvent
     }
 }

@@ -4,10 +4,12 @@ import java.util.List;
 
 import javax.annotation.Nullable;
 
+import net.robinfriedli.jxp.events.AttributeChangingEvent;
 import net.robinfriedli.jxp.events.ElementChangingEvent;
 import net.robinfriedli.jxp.events.ValueChangingEvent;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.persist.Context;
+import net.robinfriedli.jxp.persist.Transaction;
 import net.robinfriedli.jxp.persist.XmlElementShadow;
 
 /**
@@ -320,7 +322,7 @@ public interface XmlElement {
      * @return first change made to specified attribute since last commit
      */
     @Deprecated
-    ValueChangingEvent<XmlAttribute> getFirstAttributeChange(String attributeName);
+    AttributeChangingEvent getFirstAttributeChange(String attributeName);
 
     /**
      * Get last change made to {@link XmlAttribute} with specified name since last commit
@@ -329,7 +331,7 @@ public interface XmlElement {
      * @return last change made to specified attribute since last commit
      */
     @Deprecated
-    ValueChangingEvent<XmlAttribute> getLastAttributeChange(String attributeName);
+    AttributeChangingEvent getLastAttributeChange(String attributeName);
 
     /**
      * Check if attribute with specified name has any uncommitted changes
@@ -379,10 +381,28 @@ public interface XmlElement {
     /**
      * Update this XmlElements {@link XmlElementShadow}. Used after committing a change made to this XmlElement.
      */
+    @Deprecated
     void updateShadow();
 
     /**
-     * Create an {@link XmlElementShadow}. Used when commit a new XmlElement in state conception.
+     * Applies an {@link ElementChangingEvent} to this XmlElement's {@link XmlElementShadow}. Used when said change
+     * was committed.
+     *
+     * @param change the recently committed ElementChangingEvent
+     */
+    void updateShadow(ElementChangingEvent change);
+
+    /**
+     * Reverts an {@link ElementChangingEvent} from this XmlElement's {@link XmlElementShadow}. Used when a
+     * {@link Transaction} is rolling back and reverting a change that has been committed and thus applied to the shadow
+     * using {@link #updateShadow(ElementChangingEvent)}
+     *
+     * @param change
+     */
+    void revertShadow(ElementChangingEvent change);
+
+    /**
+     * Create an {@link XmlElementShadow}. Used when committing a new XmlElement in state conception.
      */
     void createShadow();
 

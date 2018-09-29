@@ -7,9 +7,11 @@ import net.robinfriedli.jxp.events.ElementCreatedEvent;
 import net.robinfriedli.jxp.events.ElementDeletingEvent;
 import net.robinfriedli.jxp.events.Event;
 import net.robinfriedli.jxp.exceptions.CommitException;
+import net.robinfriedli.jxp.exceptions.PersistException;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 
@@ -58,23 +60,31 @@ public class Transaction {
 
     public List<ElementCreatedEvent> getCreatedElements() {
         return changes.stream()
-                .filter(change -> change instanceof ElementCreatedEvent)
-                .map(change -> (ElementCreatedEvent) change)
-                .collect(Collectors.toList());
+            .filter(change -> change instanceof ElementCreatedEvent)
+            .map(change -> (ElementCreatedEvent) change)
+            .collect(Collectors.toList());
     }
 
     public List<ElementChangingEvent> getElementChanges() {
         return changes.stream()
-                .filter(change -> change instanceof ElementChangingEvent)
-                .map(change -> (ElementChangingEvent) change)
-                .collect(Collectors.toList());
+            .filter(change -> change instanceof ElementChangingEvent)
+            .map(change -> (ElementChangingEvent) change)
+            .collect(Collectors.toList());
+    }
+
+    public List<ElementChangingEvent> getChangesForElement(XmlElement element) {
+        return getElementChanges().stream().filter(change -> change.getSource() == element).collect(Collectors.toList());
+    }
+
+    public Set<XmlElement> getChangedElements() {
+        return getElementChanges().stream().map(Event::getSource).collect(Collectors.toSet());
     }
 
     public List<ElementDeletingEvent> getDeletedElements() {
         return changes.stream()
-                .filter(change -> change instanceof ElementDeletingEvent)
-                .map(change -> (ElementDeletingEvent) change)
-                .collect(Collectors.toList());
+            .filter(change -> change instanceof ElementDeletingEvent)
+            .map(change -> (ElementDeletingEvent) change)
+            .collect(Collectors.toList());
     }
 
     public boolean isRollback() {
@@ -83,9 +93,14 @@ public class Transaction {
 
     public void apply() {
         for (Event change : changes) {
-            change.apply();
-            if (applyOnly && change instanceof ElementChangingEvent) {
-                change.getSource().removeChange((ElementChangingEvent) change);
+            try {
+                change.apply();
+                if (applyOnly && change instanceof ElementChangingEvent) {
+                    change.getSource().removeChange((ElementChangingEvent) change);
+                }
+            } catch (PersistException | UnsupportedOperationException e) {
+                rollback();
+                throw new PersistException("Exception while applying transaction. Rolled back.", e);
             }
         }
 
@@ -97,21 +112,7 @@ public class Transaction {
             try {
                 for (Event change : changes) {
                     if (change.isApplied()) {
-                        XmlElement source = change.getSource();
-                        XmlPersister persister = manager.getXmlPersister();
-                        if (change instanceof ElementChangingEvent) {
-                            manager.commitElementChanges((ElementChangingEvent) change);
-                            source.removeChange((ElementChangingEvent) change);
-                        }
-                        if (change instanceof ElementDeletingEvent) {
-                            persister.remove(source);
-                            manager.getContext().removeElement(source);
-                        }
-                        if (change instanceof ElementCreatedEvent) {
-                            if (!source.isSubElement()) {
-                                persister.persistElement(source);
-                            }
-                        }
+                        change.commit(manager);
                     } else {
                         throw new CommitException("Trying to commit a change that has not been applied.");
                     }

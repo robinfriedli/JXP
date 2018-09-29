@@ -3,6 +3,7 @@ package net.robinfriedli.jxp.persist;
 import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.api.XmlAttribute;
 import net.robinfriedli.jxp.api.XmlElement;
+import net.robinfriedli.jxp.events.AttributeChangingEvent;
 import net.robinfriedli.jxp.exceptions.CommitException;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -60,22 +61,22 @@ public class XmlPersister {
         elementToRemove.getParentNode().removeChild(elementToRemove);
     }
 
-    public void setAttribute(XmlAttribute attribute) throws CommitException {
-        Element element = requireElement(attribute.getParentElement());
-        element.setAttribute(attribute.getAttributeName(), attribute.getValue());
+    public void setAttribute(AttributeChangingEvent attributeChange) throws CommitException {
+        Element element = requireElement(attributeChange.getSource());
+        element.setAttribute(attributeChange.getAttribute().getAttributeName(), attributeChange.getNewValue());
     }
 
-    public void setAttributes(XmlElement xmlElement, XmlAttribute... attributes) throws CommitException {
-        setAttributes(xmlElement, Arrays.asList(attributes));
+    public void setAttributes(XmlElement xmlElement, AttributeChangingEvent... attributeChanges) throws CommitException {
+        setAttributes(xmlElement, Arrays.asList(attributeChanges));
     }
 
-    public void setAttributes(XmlElement xmlElement, List<XmlAttribute> attributes) throws CommitException {
+    public void setAttributes(XmlElement xmlElement, List<AttributeChangingEvent> attributeChanges) throws CommitException {
         Element element = requireElement(xmlElement);
-        for (XmlAttribute attribute : attributes) {
-            if (xmlElement == attribute.getParentElement()) {
-                element.setAttribute(attribute.getAttributeName(), attribute.getValue());
+        for (AttributeChangingEvent attributeChange : attributeChanges) {
+            if (xmlElement == attributeChange.getSource()) {
+                element.setAttribute(attributeChange.getAttribute().getAttributeName(), attributeChange.getNewValue());
             } else {
-                throw new CommitException("Could not set " + attribute.toString() + " on " + xmlElement.toString()
+                throw new CommitException("Could not set " + attributeChange.toString() + " on " + xmlElement.toString()
                     + ". Element is not attribute's parent");
             }
         }
@@ -90,9 +91,6 @@ public class XmlPersister {
         Element element = requireElement(superElem);
         for (XmlElement subElem : subElems) {
             persistElement(subElem, element);
-            if (!subElem.isPersisted()) {
-                subElem.createShadow();
-            }
         }
     }
 
@@ -139,7 +137,9 @@ public class XmlPersister {
             }
         }
 
-        element.createShadow();
+        if (!element.isPersisted()) {
+            element.createShadow();
+        }
         if (!element.hasChanges()) {
             element.setState(XmlElement.State.CLEAN);
         } else {

@@ -1,7 +1,9 @@
 package net.robinfriedli.jxp.events;
 
 import net.robinfriedli.jxp.api.XmlElement;
+import net.robinfriedli.jxp.exceptions.CommitException;
 import net.robinfriedli.jxp.exceptions.PersistException;
+import net.robinfriedli.jxp.persist.DefaultPersistenceManager;
 
 public class ElementDeletingEvent extends Event {
 
@@ -28,5 +30,12 @@ public class ElementDeletingEvent extends Event {
         if (isApplied()) {
             getSource().setState(previousState);
         }
+    }
+
+    @Override
+    public void commit(DefaultPersistenceManager persistenceManager) throws CommitException {
+        persistenceManager.getXmlPersister().remove(getSource());
+        persistenceManager.getContext().removeElement(getSource());
+        setCommitted(true);
     }
 }

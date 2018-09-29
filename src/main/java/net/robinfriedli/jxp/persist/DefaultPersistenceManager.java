@@ -1,9 +1,14 @@
 package net.robinfriedli.jxp.persist;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.api.BaseXmlElement;
 import net.robinfriedli.jxp.api.XmlAttribute;
 import net.robinfriedli.jxp.api.XmlElement;
+import net.robinfriedli.jxp.events.AttributeChangingEvent;
 import net.robinfriedli.jxp.events.ElementChangingEvent;
 import net.robinfriedli.jxp.events.ValueChangingEvent;
 import net.robinfriedli.jxp.exceptions.CommitException;
@@ -11,11 +16,6 @@ import net.robinfriedli.jxp.exceptions.PersistException;
 import org.w3c.dom.Element;
 import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
-
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 public class DefaultPersistenceManager {
 
@@ -89,10 +89,7 @@ public class DefaultPersistenceManager {
 
     public void commitElementChanges(ElementChangingEvent event) throws CommitException {
         XmlElement element = event.getSource();
-        List<XmlAttribute> attributesToChange = event.getChangedAttributes() != null
-            ? event.getChangedAttributes().stream().map(ValueChangingEvent::getNewValue).collect(Collectors.toList())
-            : Lists.newArrayList();
-
+        List<AttributeChangingEvent> attributeChanges = event.getChangedAttributes();
         List<XmlElement> subElementsToAdd = event.getAddedSubElements();
         List<XmlElement> subElementsToRemove = event.getRemovedSubElements();
 
@@ -100,13 +97,12 @@ public class DefaultPersistenceManager {
             xmlPersister.addSubElements(element, subElementsToAdd);
             subElementsToAdd.forEach(elem -> elem.setState(XmlElement.State.CLEAN));
         }
-        if (!attributesToChange.isEmpty()) {
-            xmlPersister.setAttributes(element, attributesToChange);
-            element.updateShadow();
+        if (attributeChanges != null && !attributeChanges.isEmpty()) {
+            xmlPersister.setAttributes(element, attributeChanges);
+            attributeChanges.forEach(c -> c.setCommitted(true));
         }
         if (event.textContentChanged()) {
             xmlPersister.setTextContent(element);
-            element.updateShadow();
         }
         if (subElementsToRemove != null && !subElementsToRemove.isEmpty()) {
             xmlPersister.removeSubElements(element, subElementsToRemove);
@@ -124,13 +120,13 @@ public class DefaultPersistenceManager {
 
     public void castElement(XmlElement target, XmlElement source) {
         if (target.matchesStructure(source)) {
-            List<ValueChangingEvent<XmlAttribute>> changedAttributes = Lists.newArrayList();
+            List<AttributeChangingEvent> changedAttributes = Lists.newArrayList();
             ValueChangingEvent<String> changedTextContent = null;
 
             for (XmlAttribute attribute : source.getAttributes()) {
                 XmlAttribute existingAttribute = target.getAttribute(attribute.getAttributeName());
                 if (!attribute.getValue().equals(existingAttribute.getValue())) {
-                    changedAttributes.add(new ValueChangingEvent<>(target, existingAttribute, attribute));
+                    changedAttributes.add(new AttributeChangingEvent(attribute, attribute.getValue()));
                 }
             }
 
