@@ -9,6 +9,7 @@ import net.robinfriedli.jxp.events.ElementChangingEvent;
 import net.robinfriedli.jxp.events.ValueChangingEvent;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.persist.Context;
+import net.robinfriedli.jxp.persist.InstantApplyTx;
 import net.robinfriedli.jxp.persist.Transaction;
 import net.robinfriedli.jxp.persist.XmlElementShadow;
 
@@ -221,6 +222,27 @@ public interface XmlElement {
      * If there is no way to uniquely identify this XmlElement, just return null. In which case duplicates will not be
      * checked when adding an XmlElement of this type and you'll have to load it from the {@link Context} through your
      * own criteria
+     *
+     * Note that using an ID drastically affects performance when dealing with very large files because it checks
+     * if there already is an element with the same id when adding it to the Context.
+     * E.g. creating 100000 elements with id at once in an empty Context takes ~700 seconds (~820 seconds if it's an
+     * {@link InstantApplyTx}). The same task takes less than a second without IDs. Detailed performance log:
+     *
+     * Done initializing after 99 ms
+     * Transaction took 93 ms to run. Now applying
+     * 10000 milestone reached after 7 seconds
+     * 20000 milestone reached after 25 seconds
+     * 30000 milestone reached after 59 seconds
+     * 40000 milestone reached after 111 seconds
+     * 50000 milestone reached after 173 seconds
+     * 60000 milestone reached after 251 seconds
+     * 70000 milestone reached after 342 seconds
+     * 80000 milestone reached after 449 seconds
+     * 90000 milestone reached after 571 seconds
+     * Transaction finished applying after 707 seconds
+     * Transaction finished committing after 708 seconds
+     * All elements saved after 708 seconds
+     * (before v0.5: 1100 seconds)
      *
      * @return unique id for this XmlElement instance
      */

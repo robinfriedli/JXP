@@ -244,6 +244,15 @@ public class XmlPersister {
         doc = getDocument();
     }
 
+    public boolean deleteFile(Context.BindableContext bindableContext) {
+        File file = new File(bindableContext.getPath());
+        if (file.exists()) {
+            return file.delete();
+        }
+
+        return false;
+    }
+
     private File getFile() throws CommitException {
         String path = context.getPath();
 
@@ -267,7 +276,7 @@ public class XmlPersister {
                     e.printStackTrace();
                 }
             } else {
-                throw new IllegalStateException("No file found for path defined in thread Context. Copying to new file for BindableContext failed");
+                throw new IllegalStateException("No file found for path defined in base Context. Copying to new file for BindableContext failed");
             }
         } else {
             throw new IllegalStateException("Context is not bindable and no file has been found for specified path");

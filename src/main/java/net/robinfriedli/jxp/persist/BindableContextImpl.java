@@ -16,6 +16,12 @@ public class BindableContextImpl<E> extends ContextImpl implements Context.Binda
         return boundObject;
     }
 
+    @Override
+    public void destroy() {
+        XmlPersister xmlPersister = getPersistenceManager().getXmlPersister();
+        xmlPersister.deleteFile(this);
+    }
+
     private static String buildPath(ContextManager manager, String id) {
         // add the id of the BindableContext in front of the last element of the path: ./resources/2343240923elements.xml
         String standardPath = manager.getPath();

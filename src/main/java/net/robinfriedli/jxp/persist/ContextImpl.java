@@ -6,18 +6,12 @@ import net.robinfriedli.jxp.exceptions.CommitException;
 import net.robinfriedli.jxp.exceptions.PersistException;
 
 import javax.annotation.Nullable;
-
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
-/**
- * Entry point to the persistence layer.
- * Holds temporary state of emojis in memory.
- * Changes are applied to the Emoji instances here first before saving to the XML file using the PersistenceManager#commit() method
- * Use the invoke() method instead of using the PersistenceManager directly.
- */
 public class ContextImpl implements Context {
 
     private final ContextManager manager;
@@ -64,8 +58,18 @@ public class ContextImpl implements Context {
     }
 
     @Override
+    public List<XmlElement> getElements(Predicate<XmlElement> predicate) {
+        return inMemoryElements.stream().filter(predicate).collect(Collectors.toList());
+    }
+
+    @Override
     public List<XmlElement> getUsableElements() {
-        return inMemoryElements.stream().filter(e -> e.getState() != XmlElement.State.DELETION).collect(Collectors.toList());
+        return getElements(e -> e.getState() != XmlElement.State.DELETION);
+    }
+
+    @Override
+    public List<String> getUsedIds() {
+        return getUsableElements().stream().map(XmlElement::getId).collect(Collectors.toList());
     }
 
     @Override
@@ -85,8 +89,7 @@ public class ContextImpl implements Context {
         if (foundElements.size() == 1) {
             return foundElements.get(0);
         } else if (foundElements.size() > 1) {
-            throw new IllegalStateException("Id: " + id + " not unique. Element loading failed. " +
-                "Add Elements using the #invoke method via the PersistenceManager instead of adding to Context directly");
+            throw new IllegalStateException("Id " + id + " not unique");
         } else {
             return null;
         }
@@ -132,17 +135,15 @@ public class ContextImpl implements Context {
 
     @Override
     public void addElement(XmlElement element) {
-        addElements(Lists.newArrayList(element));
+        if (element.getId() != null && getUsedIds().contains(element.getId())) {
+            throw new PersistException("There already is an element with id " + element.getId() + " in this Context");
+        }
+        inMemoryElements.add(element);
     }
 
     @Override
     public void addElements(List<XmlElement> elements) {
-        for (XmlElement element : elements) {
-            if (element.getId() != null && getElement(element.getId()) != null) {
-                throw new PersistException("There already is an element with id " + element.getId() + " in this Context");
-            }
-            inMemoryElements.add(element);
-        }
+        elements.forEach(this::addElement);
     }
 
     @Override
@@ -196,12 +197,12 @@ public class ContextImpl implements Context {
     }
 
     @Override
-    public <E> E invoke(boolean commit, Callable<E> task) {
+    public <E> E invoke(boolean commit, boolean instantApply, Callable<E> task) {
         boolean encapsulated = false;
         if (transaction != null) {
             encapsulated = true;
         } else {
-            getTx();
+            getTx(instantApply, false);
         }
 
         E returnValue;
@@ -214,52 +215,66 @@ public class ContextImpl implements Context {
         }
 
         if (!encapsulated) {
-            transaction.apply();
-            if (commit) {
-                try {
-                    transaction.commit(persistenceManager);
-                    persistenceManager.write();
-                } catch (CommitException e) {
-                    e.printStackTrace();
+            try {
+                if (instantApply) {
+                    getManager().fireTransactionApplied(transaction);
+                } else {
+                    transaction.apply();
                 }
-            } else {
-                uncommittedTransactions.add(transaction);
+                if (commit) {
+                    try {
+                        transaction.commit(persistenceManager);
+                        persistenceManager.write();
+                    } catch (CommitException e) {
+                        e.printStackTrace();
+                    }
+                } else {
+                    uncommittedTransactions.add(transaction);
+                }
+            } finally {
+                closeTx();
             }
-        }
-
-        if (!encapsulated) {
-            closeTx();
         }
 
         return returnValue;
     }
 
     @Override
-    public void invoke(boolean commit, Runnable task) {
-        invoke(commit, () -> {
+    public <E> E invoke(Callable<E> task) {
+        return invoke(true, true, task);
+    }
+
+    @Override
+    public void invoke(boolean commit, boolean instantApply, Runnable task) {
+        invoke(commit, instantApply, () -> {
             task.run();
             return null;
         });
     }
 
     @Override
-    public <E> E invoke(boolean commit, Callable<E> task, Object envVar) {
-        this.envVar = envVar;
-        return invoke(commit, task);
+    public void invoke(Runnable task) {
+        invoke(true, true, task);
     }
 
     @Override
-    public void invoke(boolean commit, Runnable task, Object envVar) {
+    public <E> E invoke(boolean commit, boolean instantApply, Callable<E> task, Object envVar) {
         this.envVar = envVar;
-        invoke(commit, task);
+        return invoke(commit, instantApply, task);
     }
 
     @Override
-    public void apply(Runnable task) {
+    public void invoke(boolean commit, boolean instantApply, Runnable task, Object envVar) {
+        this.envVar = envVar;
+        invoke(commit, instantApply, task);
+    }
+
+    @Override
+    public void apply(boolean instantApply, Runnable task) {
         // save the currently ongoing transaction
         Transaction currentTx = transaction;
         // switch to a different transaction
-        transaction = Transaction.createApplyOnlyTx(this);
+        getTx(instantApply, true);
 
         try {
             task.run();
@@ -268,9 +283,18 @@ public class ContextImpl implements Context {
             throw new PersistException(e.getClass().getName() + " thrown during task run. Closing transaction.", e);
         }
 
-        transaction.apply();
+        if (!instantApply) {
+            transaction.apply();
+        } else {
+            getManager().fireTransactionApplied(transaction);
+        }
         // switch back to old transaction
         transaction = currentTx;
+    }
+
+    @Override
+    public void apply(Runnable task) {
+        apply(true, task);
     }
 
     @Override
@@ -289,9 +313,13 @@ public class ContextImpl implements Context {
         return transaction;
     }
 
-    private void getTx() {
-        if (transaction != null) {
-            return;
+    private void getTx(boolean instantApply, boolean applyOnly) {
+        if (instantApply && applyOnly) {
+            transaction = Transaction.createInstantApplyOnlyTx(this);
+        } else if (instantApply) {
+            transaction = Transaction.createInstantApplyTx(this);
+        } else if (applyOnly) {
+            transaction = Transaction.createApplyOnlyTx(this);
         } else {
             transaction = Transaction.createTx(this);
         }

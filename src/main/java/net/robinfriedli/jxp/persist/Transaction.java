@@ -25,17 +25,10 @@ public class Transaction {
     private final Context context;
     private final List<Event> changes;
     private boolean rollback = false;
-    private boolean applyOnly = false;
 
     public Transaction(Context context, List<Event> changes) {
         this.context = context;
         this.changes = changes;
-    }
-
-    public Transaction(Context context, List<Event> changes, boolean applyOnly) {
-        this.context = context;
-        this.changes = changes;
-        this.applyOnly = applyOnly;
     }
 
     public Context getContext() {
@@ -95,9 +88,6 @@ public class Transaction {
         for (Event change : changes) {
             try {
                 change.apply();
-                if (applyOnly && change instanceof ElementChangingEvent) {
-                    change.getSource().removeChange((ElementChangingEvent) change);
-                }
             } catch (PersistException | UnsupportedOperationException e) {
                 rollback();
                 throw new PersistException("Exception while applying transaction. Rolled back.", e);
@@ -108,7 +98,7 @@ public class Transaction {
     }
 
     public void commit(DefaultPersistenceManager manager) throws CommitException {
-        if (!applyOnly) {
+        if (!isRollback()) {
             try {
                 for (Event change : changes) {
                     if (change.isApplied()) {
@@ -125,7 +115,7 @@ public class Transaction {
 
             context.getManager().fireTransactionCommitted(this);
         } else {
-            throw new CommitException("Trying to commit an apply-only Transaction");
+            throw new CommitException("Cannot commit transaction that was rolled back");
         }
     }
 
@@ -138,7 +128,15 @@ public class Transaction {
         return new Transaction(context, Lists.newArrayList());
     }
 
-    public static Transaction createApplyOnlyTx(Context context) {
-        return new Transaction(context, Lists.newArrayList(), true);
+    public static ApplyOnlyTx createApplyOnlyTx(Context context) {
+        return new ApplyOnlyTx(context, Lists.newArrayList());
+    }
+
+    public static InstantApplyTx createInstantApplyTx(Context context) {
+        return new InstantApplyTx(context, Lists.newArrayList());
+    }
+
+    public static InstantApplyOnlyTx createInstantApplyOnlyTx(Context context) {
+        return new InstantApplyOnlyTx(context, Lists.newArrayList());
     }
 }
