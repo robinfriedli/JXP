@@ -33,7 +33,6 @@ public class XmlElementShadow {
         buildAttributeMap();
     }
 
-    @Deprecated
     public void update() {
         buildAttributeMap();
         this.textContent = source.getTextContent();

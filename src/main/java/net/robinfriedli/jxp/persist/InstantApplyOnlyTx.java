@@ -29,7 +29,7 @@ public class InstantApplyOnlyTx extends InstantApplyTx {
             }
         } catch (PersistException | UnsupportedOperationException e) {
             rollback();
-            throw new PersistException("Exception while applying change. Transaction rolled back");
+            throw new PersistException("Exception while applying change. Transaction rolled back", e);
         }
     }
 }

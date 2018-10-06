@@ -510,7 +510,6 @@ public abstract class AbstractXmlElement implements XmlElement {
         return shadow;
     }
 
-    @Deprecated
     @Override
     public void updateShadow() {
         shadow.update();

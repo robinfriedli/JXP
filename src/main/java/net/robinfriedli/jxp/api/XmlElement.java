@@ -403,7 +403,6 @@ public interface XmlElement {
     /**
      * Update this XmlElements {@link XmlElementShadow}. Used after committing a change made to this XmlElement.
      */
-    @Deprecated
     void updateShadow();
 
     /**
