@@ -11,7 +11,7 @@ Java XML Persistence API
     <dependency>
       <groupId>net.robinfriedli.JXP</groupId>
       <artifactId>JXP</artifactId>
-      <version>0.4</version>
+      <version>0.5</version>
     </dependency>
 ```
 ## AbstractXmlElement and BaseXmlElement
@@ -66,7 +66,8 @@ Example:
             return attributes;
         }
     }
-
+```
+```java
     package net.robinfriedli.jxp.api;
 
     import java.util.HashMap;
@@ -154,7 +155,7 @@ optional third parameter: any Object to set as this Context's environment variab
 
 The quickest way to add a new XmlElement to the file:
 ```java
-    context.invoke(true, () -> new Country("Italia", "Italy", true, Lists.newArrayList(rome, florence, venice), context).persist());
+    context.invoke(() -> new Country("Italia", "Italy", true, Lists.newArrayList(rome, florence, venice), context).persist());
 ```
 The environment variable can be anything you might need somewhere els in context with this transaction.
 E.g. say you're developing a Discord bot and you've implemented an EventListener that sends a message
@@ -164,8 +165,9 @@ to send the message to the right channel.
 Example:
 ```java
     Context context = contextManager.getContext();
-    context.invoke(true, () -> {
-        Country country = new Country("Schweiz", "Switzerland", true, Lists.newArrayList(this), context);
+    context.invoke(() -> {
+        Country ch = new Country("Schweiz", "Switzerland", true, Lists.newArrayList(this), context);
+        ch.persist();
 
         Country unitedKingdom = context.getElement("United Kingdom", Country.class);
         unitedKingdom.setAttribute("sovereign", Boolean.toString(true));
@@ -174,6 +176,60 @@ Example:
         france.delete();
     });
 ```
+
+Something JXP really does not like is several XML elements that look exactly the same. Trying to commit a change for
+an such en element will result in an exception, since XmlPersister can't identify the element you want to change. What
+you can do if duplicate elements are common in your project is overriding the commitElementChanges(ElementChangingEvent)
+method in your implementation of the DefaultPersistenceManager. Or, if it's less common, use the Context#apply method
+instead of invoke() when dealing with such an element. Context#apply creates an apply-only transaction that never gets
+committed meaning you'll have to change the XML elements in the file manually using the XmlPersister yourself. Also make
+sure to update the element's XmlElementShadow using XmlElement#updateShadow(ElementChangingEvent) if needed. apply() can
+also be called from within a regular Transaction, in which case it creates an apply-only transaction and then switches
+back to the old Transaction.
+
+Example:
+
+Say you are working with following XML file:
+```xml
+    <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+    <countries xmlns="countrySpace">
+        <country englishName="Switzerland" name="Schweiz" sovereign="true">
+            <city name="Zurich" population="400000"/>
+            <city name="Geneva" population="200000"/>
+        </country>
+        <country englishName="England" name="England" sovereign="false">
+            <city name="London" population="8000000"/>
+            <city name="London" population="8000000"/>
+        </country>
+    </countries>
+```
+Then this code will fail because London is duplicate:
+```java
+    context.invoke(() -> london.setAttribute("population", "8900000"));
+```
+So you need to ony apply the change and the save it to the XML file manually:
+```java
+    context.apply(() -> london.setAttribute("population", "8900000"));
+    XmlPersister xmlPersister = context.getPersistenceManager().getXmlPersister();
+    Element londonElem = xmlPersister.find("city", "name", "London", england).get(1);
+    londonElem.setAttribute("population", "8900000");
+    xmlPersister.writeToFile();     //normally the invoke method would do this
+    london.updateShadow();
+```
+Or if you want to delete the duplicate and change the original element:
+```java
+    context.invoke(() -> {
+        context.apply(london::delete);
+        XmlPersister xmlPersister = context.getPersistenceManager().getXmlPersister();
+        Element londonElem = xmlPersister.find("city", "name", "London", england).get(1);
+        londonElem.getParentNode().removeChild(londonElem);
+
+        XmlElement originalLondon = england.requireSubElement("London");
+        originalLondon.setAttribute("population", "8900000");
+    });
+```
+
+
 ## Transaction
 
 All changes made by a task are added to the Context's current transaction. At the end of the task all changes will be applied
