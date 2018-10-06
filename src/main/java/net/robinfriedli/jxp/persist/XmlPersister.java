@@ -4,6 +4,7 @@ import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.api.XmlAttribute;
 import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.events.AttributeChangingEvent;
+import net.robinfriedli.jxp.events.ValueChangingEvent;
 import net.robinfriedli.jxp.exceptions.CommitException;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -82,9 +83,9 @@ public class XmlPersister {
         }
     }
 
-    public void setTextContent(XmlElement xmlElement) throws CommitException {
-        Element element = requireElement(xmlElement);
-        element.setTextContent(xmlElement.getTextContent());
+    public void setTextContent(ValueChangingEvent<String> changedTextContent) throws CommitException {
+        Element element = requireElement(changedTextContent.getSource());
+        element.setTextContent(changedTextContent.getNewValue());
     }
 
     public void addSubElements(XmlElement superElem, List<XmlElement> subElems) throws CommitException {

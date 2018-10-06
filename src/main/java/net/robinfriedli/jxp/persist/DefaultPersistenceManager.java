@@ -102,7 +102,7 @@ public class DefaultPersistenceManager {
             attributeChanges.forEach(c -> c.setCommitted(true));
         }
         if (event.textContentChanged()) {
-            xmlPersister.setTextContent(element);
+            xmlPersister.setTextContent(event.getChangedTextContent());
         }
         if (subElementsToRemove != null && !subElementsToRemove.isEmpty()) {
             xmlPersister.removeSubElements(element, subElementsToRemove);
