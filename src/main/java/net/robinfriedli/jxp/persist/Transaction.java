@@ -124,6 +124,14 @@ public class Transaction {
         changes.forEach(Event::revert);
     }
 
+    public boolean isApplyOnly() {
+        return this instanceof ApplyOnlyTx || this instanceof InstantApplyOnlyTx;
+    }
+
+    public boolean isInstantApply() {
+        return this instanceof InstantApplyTx;
+    }
+
     public static Transaction createTx(Context context) {
         return new Transaction(context, Lists.newArrayList());
     }

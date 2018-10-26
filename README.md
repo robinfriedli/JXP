@@ -11,7 +11,7 @@ Java XML Persistence API
     <dependency>
       <groupId>net.robinfriedli.JXP</groupId>
       <artifactId>JXP</artifactId>
-      <version>0.5</version>
+      <version>0.6</version>
     </dependency>
 ```
 ## AbstractXmlElement and BaseXmlElement
@@ -229,6 +229,57 @@ Or if you want to delete the duplicate and change the original element:
     });
 ```
 
+## Queries
+
+The Conditions class offers many static methods to build predicates to find XmlElements with. Use Context#query
+to run a query over a context's elements (including all subelements recursively), which returns a QueryResult<List<XmlElement>>,
+or use the static method Query#evaluate to build a query and then run it over any Collection of XmlElements using the
+Query#execute method. Use Query#count to get the amount of results a query returns or
+Query#execute(Collection, Collector) to select what kind of Collection to collect the results with.
+You can also use QueryResult#order to order the results by an attribute or text content, if results were collected to a
+List.
+
+Examples:
+```java
+    XmlElement london = context.query(
+            and(
+                    attribute("population").greaterThan(800000),
+                    subElementOf(england),
+                    instanceOf(City.class),
+                    textContent().isEmpty()
+            )
+    ).requireOnlyResult();
+```
+```java
+    Set<XmlElement> largeCities = Query.evaluate(attribute("population").greaterThan(8000000))
+        .execute(context.getElementsRecursive(), Collectors.toSet())
+        .collect();
+```
+```java
+    context.invoke(() -> {
+        if (Query.evaluate(attribute("name").is("France")).count(context.getElements()) == 0) {
+            City paris = new City("Paris", 2000000, context);
+            Country france = new Country("France", "France", true, Lists.newArrayList(paris), context);
+            france.persist();
+        }
+        if (Query.evaluate(attribute("englishName").startsWith("Swe")).count(context.getElements()) == 0) {
+            City stockholm = new City("Stockholm", 950000, context);
+            Country sweden = new Country("Sverige", "Sweden", true, Lists.newArrayList(stockholm), context);
+            sweden.persist();
+        }
+    });
+```
+```java
+    XmlElement london = Query.evaluate(attribute("population").greaterEquals(400000))
+            .execute(context.getElementsRecursive())
+            .order(Order.attribute("name"))
+            .requireFirstResult();
+
+    XmlElement zurich = Query.evaluate(attribute("population").greaterEquals(400000))
+            .execute(context.getElementsRecursive())
+            .order(Order.attribute("name", Order.Direction.DESCENDING))
+            .requireFirstResult();
+```
 
 ## Transaction
 

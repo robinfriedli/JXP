@@ -372,7 +372,7 @@ public abstract class AbstractXmlElement implements XmlElement {
                 Transaction transaction = context.getTransaction();
 
                 if (transaction == null) {
-                    throw new PersistException("Context has no transaction. Use Context#exectePersistTask");
+                    throw new PersistException("Context has no transaction. Use Context#invoke");
                 }
 
                 if (state == State.CLEAN) {

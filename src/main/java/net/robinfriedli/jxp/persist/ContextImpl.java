@@ -1,26 +1,31 @@
 package net.robinfriedli.jxp.persist;
 
-import com.google.common.collect.Lists;
-import net.robinfriedli.jxp.api.XmlElement;
-import net.robinfriedli.jxp.exceptions.CommitException;
-import net.robinfriedli.jxp.exceptions.PersistException;
-
-import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import javax.annotation.Nullable;
+
+import com.google.common.collect.Lists;
+import net.robinfriedli.jxp.api.XmlElement;
+import net.robinfriedli.jxp.exceptions.CommitException;
+import net.robinfriedli.jxp.exceptions.PersistException;
+import net.robinfriedli.jxp.queries.Query;
+import net.robinfriedli.jxp.queries.QueryResult;
+
 public class ContextImpl implements Context {
 
     private final ContextManager manager;
 
-    private final List<XmlElement> inMemoryElements;
+    private final List<XmlElement> elements;
 
     private final DefaultPersistenceManager persistenceManager;
 
     private final String path;
+
+    private final String rootElem;
 
     private Transaction transaction;
 
@@ -32,9 +37,10 @@ public class ContextImpl implements Context {
         this.manager = manager;
         this.path = path;
         persistenceManager.initialize(this);
+        rootElem = persistenceManager.getXmlPersister().getDocument().getDocumentElement().getTagName();
         this.persistenceManager = persistenceManager;
-        this.inMemoryElements = persistenceManager.getAllElements();
-        persistenceManager.buildTree(inMemoryElements);
+        this.elements = persistenceManager.getAllElements();
+        persistenceManager.buildTree(elements);
     }
 
     @Override
@@ -53,13 +59,36 @@ public class ContextImpl implements Context {
     }
 
     @Override
+    public String getRootElem() {
+        return rootElem;
+    }
+
+    @Override
     public List<XmlElement> getElements() {
-        return inMemoryElements;
+        return elements;
+    }
+
+    @Override
+    public List<XmlElement> getElementsRecursive() {
+        List<XmlElement> elements = Lists.newArrayList();
+        for (XmlElement element : this.elements) {
+            recursiveAdd(elements, element);
+        }
+        return elements;
+    }
+
+    private void recursiveAdd(List<XmlElement> elements, XmlElement element) {
+        elements.add(element);
+        if (element.hasSubElements()) {
+            for (XmlElement subElement : element.getSubElements()) {
+                recursiveAdd(elements, subElement);
+            }
+        }
     }
 
     @Override
     public List<XmlElement> getElements(Predicate<XmlElement> predicate) {
-        return inMemoryElements.stream().filter(predicate).collect(Collectors.toList());
+        return elements.stream().filter(predicate).collect(Collectors.toList());
     }
 
     @Override
@@ -128,9 +157,14 @@ public class ContextImpl implements Context {
     }
 
     @Override
+    public QueryResult<List<XmlElement>> query(Predicate<XmlElement> condition) {
+        return Query.evaluate(condition).execute(getElementsRecursive());
+    }
+
+    @Override
     public void reloadElements() {
-        inMemoryElements.clear();
-        inMemoryElements.addAll(persistenceManager.getAllElements());
+        elements.clear();
+        elements.addAll(persistenceManager.getAllElements());
     }
 
     @Override
@@ -138,7 +172,7 @@ public class ContextImpl implements Context {
         if (element.getId() != null && getUsedIds().contains(element.getId())) {
             throw new PersistException("There already is an element with id " + element.getId() + " in this Context");
         }
-        inMemoryElements.add(element);
+        elements.add(element);
     }
 
     @Override
@@ -153,12 +187,12 @@ public class ContextImpl implements Context {
 
     @Override
     public void removeElement(XmlElement element) {
-        inMemoryElements.remove(element);
+        elements.remove(element);
     }
 
     @Override
     public void removeElements(List<XmlElement> elements) {
-        inMemoryElements.removeAll(elements);
+        this.elements.removeAll(elements);
     }
 
     @Override

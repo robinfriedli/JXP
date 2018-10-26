@@ -1,12 +1,14 @@
 package net.robinfriedli.jxp.persist;
 
-import net.robinfriedli.jxp.api.XmlElement;
-
-import javax.annotation.Nullable;
-
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.function.Predicate;
+
+import javax.annotation.Nullable;
+
+import net.robinfriedli.jxp.api.XmlElement;
+import net.robinfriedli.jxp.queries.Conditions;
+import net.robinfriedli.jxp.queries.QueryResult;
 
 /**
  * Main entry to the persistence layer. Represents an XML document and holds all its elements as {@link XmlElement}
@@ -31,9 +33,19 @@ public interface Context {
     String getPath();
 
     /**
+     * @return the tag name of the root element this Context represents
+     */
+    String getRootElem();
+
+    /**
      * @return All Elements saved in this Context
      */
     List<XmlElement> getElements();
+
+    /**
+     * @return All Elements including subElements
+     */
+    List<XmlElement> getElementsRecursive();
 
     /**
      * @return all XmlElements in this Context that match {@param predicate}
@@ -103,6 +115,15 @@ public interface Context {
      * @return All Elements that are an instance of specified Class but not specified subclasses
      */
     <E extends XmlElement> List<E> getInstancesOf(Class<E> c, Class... ingoredSubClasses);
+
+    /**
+     * Checks all XmlElements for provided {@link Predicate}s and returns {@link QueryResult} with matching elements.
+     * See {@link Conditions} for useful predicates.
+     *
+     * @param condition
+     * @return
+     */
+    QueryResult<List<XmlElement>> query(Predicate<XmlElement> condition);
 
     /**
      * Reload all Elements from the XML File. This overrides any uncommitted changes.

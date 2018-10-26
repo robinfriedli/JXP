@@ -1,9 +1,12 @@
 package net.robinfriedli.jxp.persist;
 
+import com.google.common.base.Strings;
 import net.robinfriedli.jxp.api.XmlAttribute;
 import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.events.AttributeChangingEvent;
 import net.robinfriedli.jxp.events.ElementChangingEvent;
+import net.robinfriedli.stringlist.StringList;
+import net.robinfriedli.stringlist.StringListImpl;
 import org.w3c.dom.Element;
 
 import java.util.HashMap;
@@ -52,6 +55,42 @@ public class XmlElementShadow {
 
     public String getTextContent() {
         return textContent;
+    }
+
+    public String getXPath() {
+        StringBuilder expression = new StringBuilder();
+        expression.append("/").append(source.getContext().getRootElem());
+        buildPath(expression, source);
+
+        if (!attributes.keySet().isEmpty() || !Strings.isNullOrEmpty(textContent)) {
+            expression.append("[");
+
+            if (!attributes.keySet().isEmpty()) {
+                StringList mappedAttributes = StringListImpl.create(
+                    attributes.keySet(), attribute -> String.format("@%s='%s'", attribute, attributes.get(attribute))
+                );
+                expression.append(mappedAttributes.toSeparatedString(" and "));
+            }
+
+            if (!attributes.keySet().isEmpty() && !Strings.isNullOrEmpty(textContent)) {
+                expression.append(" and ");
+            }
+
+            if (!Strings.isNullOrEmpty(textContent)) {
+                expression.append("text()='").append(textContent).append("'");
+            }
+
+            expression.append("]");
+        }
+
+        return expression.toString();
+    }
+
+    public void buildPath(StringBuilder builder, XmlElement element) {
+        if (element.isSubElement()) {
+            buildPath(builder, element.getParent());
+        }
+        builder.append("/").append(element.getTagName());
     }
 
     public boolean matches(Element element) {

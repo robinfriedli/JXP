@@ -19,6 +19,10 @@ import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
+import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathConstants;
+import javax.xml.xpath.XPathExpressionException;
+import javax.xml.xpath.XPathFactory;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -167,18 +171,21 @@ public class XmlPersister {
     }
 
     public List<Element> getElements(XmlElement xmlElement, @Nullable Element superElem) throws CommitException {
-        List<Element> elements;
-        if (superElem != null) {
-            elements = nodeListToElementList(superElem.getElementsByTagName(xmlElement.getTagName()));
-        } else {
-            elements = nodeListToElementList(doc.getElementsByTagName(xmlElement.getTagName()));
-        }
-
         XmlElementShadow shadow = xmlElement.getShadow();
         if (shadow == null) {
             throw new CommitException(xmlElement.toString() + " does not have a shadow yet. Can not load from file.");
         }
-        return elements.stream().filter(shadow::matches).collect(Collectors.toList());
+
+        XPath xPath = XPathFactory.newInstance().newXPath();
+        try {
+            if (superElem != null) {
+                return nodeListToElementList((NodeList) xPath.compile(shadow.getXPath()).evaluate(superElem, XPathConstants.NODESET));
+            } else {
+                return nodeListToElementList((NodeList) xPath.compile(shadow.getXPath()).evaluate(doc, XPathConstants.NODESET));
+            }
+        } catch (XPathExpressionException e) {
+            throw new CommitException("Exception compiling XPath for " + xmlElement.toString(), e);
+        }
     }
 
     private Element requireSubElement(Element superElem, XmlElement subElem) throws CommitException {
