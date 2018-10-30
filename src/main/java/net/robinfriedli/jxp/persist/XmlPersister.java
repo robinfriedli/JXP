@@ -40,7 +40,7 @@ public class XmlPersister {
 
     public XmlPersister(Context context) {
         this.context = context;
-        this.doc = getDocument();
+        this.doc = parseDocument();
     }
 
     public List<Element> getElements(String tagName) {
@@ -178,10 +178,11 @@ public class XmlPersister {
 
         XPath xPath = XPathFactory.newInstance().newXPath();
         try {
-            if (superElem != null) {
-                return nodeListToElementList((NodeList) xPath.compile(shadow.getXPath()).evaluate(superElem, XPathConstants.NODESET));
+            List<Element> found = nodeListToElementList((NodeList) xPath.compile(shadow.getXPath()).evaluate(doc, XPathConstants.NODESET));
+            if (superElem == null) {
+                return found;
             } else {
-                return nodeListToElementList((NodeList) xPath.compile(shadow.getXPath()).evaluate(doc, XPathConstants.NODESET));
+                return found.stream().filter(elem -> elem.getParentNode() == superElem).collect(Collectors.toList());
             }
         } catch (XPathExpressionException e) {
             throw new CommitException("Exception compiling XPath for " + xmlElement.toString(), e);
@@ -247,8 +248,12 @@ public class XmlPersister {
         }
     }
 
+    public Document getDocument() {
+        return doc;
+    }
+
     public void reloadDocument() {
-        doc = getDocument();
+        doc = parseDocument();
     }
 
     public boolean deleteFile(Context.BindableContext bindableContext) {
@@ -310,18 +315,15 @@ public class XmlPersister {
         return elements;
     }
 
-    public Document getDocument() {
+    public Document parseDocument() {
         try {
             File xml = getFile();
             DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
             DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
             return dBuilder.parse(xml);
-
         } catch (Exception e) {
-            e.printStackTrace();
+            throw new IllegalStateException("Exception while parsing document", e);
         }
-
-        return null;
     }
 
     private List<Element> nodeListToElementList(NodeList nodeList) {

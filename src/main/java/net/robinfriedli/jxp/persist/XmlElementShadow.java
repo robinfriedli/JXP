@@ -7,6 +7,7 @@ import net.robinfriedli.jxp.events.AttributeChangingEvent;
 import net.robinfriedli.jxp.events.ElementChangingEvent;
 import net.robinfriedli.stringlist.StringList;
 import net.robinfriedli.stringlist.StringListImpl;
+import org.openqa.selenium.support.ui.Quotes;
 import org.w3c.dom.Element;
 
 import java.util.HashMap;
@@ -67,7 +68,8 @@ public class XmlElementShadow {
 
             if (!attributes.keySet().isEmpty()) {
                 StringList mappedAttributes = StringListImpl.create(
-                    attributes.keySet(), attribute -> String.format("@%s='%s'", attribute, attributes.get(attribute))
+                    attributes.keySet(),
+                    attribute -> String.format("@%s=%s", attribute, Quotes.escape(attributes.get(attribute)))
                 );
                 expression.append(mappedAttributes.toSeparatedString(" and "));
             }
@@ -77,7 +79,7 @@ public class XmlElementShadow {
             }
 
             if (!Strings.isNullOrEmpty(textContent)) {
-                expression.append("text()='").append(textContent).append("'");
+                expression.append("text()=").append(Quotes.escape(textContent));
             }
 
             expression.append("]");
@@ -86,7 +88,7 @@ public class XmlElementShadow {
         return expression.toString();
     }
 
-    public void buildPath(StringBuilder builder, XmlElement element) {
+    private void buildPath(StringBuilder builder, XmlElement element) {
         if (element.isSubElement()) {
             buildPath(builder, element.getParent());
         }
