@@ -1,19 +1,17 @@
 package net.robinfriedli.jxp.events;
 
-import javax.annotation.Nullable;
-
 import net.robinfriedli.jxp.api.XmlElement;
+import net.robinfriedli.jxp.exceptions.CommitException;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.persist.DefaultPersistenceManager;
 
 public class ElementDeletingEvent extends Event {
 
-    private XmlElement oldParent;
-    private final XmlElement.State oldState;
+    private final XmlElement.State previousState;
 
-    public ElementDeletingEvent(XmlElement element, XmlElement.State oldState) {
+    public ElementDeletingEvent(XmlElement element, XmlElement.State previousState) {
         super(element);
-        this.oldState = oldState;
+        this.previousState = previousState;
     }
 
     @Override
@@ -21,41 +19,23 @@ public class ElementDeletingEvent extends Event {
         if (isApplied()) {
             throw new PersistException("Change has already been applied");
         } else {
-            XmlElement source = getSource();
-            if (!source.isSubElement()) {
-                source.getContext().removeElement(source);
-            } else {
-                oldParent = source.getParent();
-                oldParent.getSubElements().remove(source);
-                source.removeParent();
-            }
+            getSource().setState(XmlElement.State.DELETION);
             setApplied(true);
-            source.getContext().getManager().fireElementDeleting(this);
+            getSource().getContext().getManager().fireElementDeleting(this);
         }
     }
 
     @Override
     public void revert() {
         if (isApplied()) {
-            if (!getSource().isSubElement()) {
-                getSource().getContext().addElement(getSource());
-            } else {
-                oldParent.getSubElements().add(getSource());
-                getSource().setParent(oldParent);
-            }
-            getSource().setState(oldState);
+            getSource().setState(previousState);
         }
     }
 
     @Override
-    public void commit(DefaultPersistenceManager persistenceManager) {
-        getSource().phantomize();
+    public void commit(DefaultPersistenceManager persistenceManager) throws CommitException {
+        persistenceManager.getXmlPersister().remove(getSource());
+        persistenceManager.getContext().removeElement(getSource());
         setCommitted(true);
     }
-
-    @Nullable
-    public XmlElement getOldParent() {
-        return oldParent;
-    }
-
 }

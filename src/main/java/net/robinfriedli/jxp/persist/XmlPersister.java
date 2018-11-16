@@ -1,23 +1,5 @@
 package net.robinfriedli.jxp.persist;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.nio.channels.FileChannel;
-import java.util.Arrays;
-import java.util.List;
-import java.util.stream.Collectors;
-
-import javax.annotation.Nullable;
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerException;
-import javax.xml.transform.TransformerFactory;
-import javax.xml.transform.dom.DOMSource;
-import javax.xml.transform.stream.StreamResult;
-
 import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.api.XmlAttribute;
 import net.robinfriedli.jxp.api.XmlElement;
@@ -28,6 +10,28 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
+
+import javax.annotation.Nullable;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathConstants;
+import javax.xml.xpath.XPathExpressionException;
+import javax.xml.xpath.XPathFactory;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class XmlPersister {
 
@@ -60,12 +64,6 @@ public class XmlPersister {
     public void remove(XmlElement element) throws CommitException {
         Element elementToRemove = requireElement(element);
         elementToRemove.getParentNode().removeChild(elementToRemove);
-    }
-
-    public void remove(List<XmlElement> elements) throws CommitException {
-        for (XmlElement element : elements) {
-            remove(element);
-        }
     }
 
     public void setAttribute(AttributeChangingEvent attributeChange) throws CommitException {
@@ -101,13 +99,25 @@ public class XmlPersister {
         }
     }
 
-    public boolean isSubElementOf(XmlElement subElem, XmlElement superElem) {
-        Element element = superElem.requireElement();
-        List<Element> subElements = nodeListToElementList(element.getElementsByTagName(subElem.getTagName()));
-        return subElements.contains(subElem.requireElement());
+    public void removeSubElements(XmlElement superElem, List<XmlElement> subElems) throws CommitException {
+        Element element = requireElement(superElem);
+        for (XmlElement subElem : subElems) {
+            element.removeChild(requireSubElement(element, subElem));
+        }
     }
 
-    public void persistElement(XmlElement element, @Nullable Element superElem) {
+    public boolean isSubElementOf(XmlElement subElem, XmlElement superElem) {
+        Element element;
+        try {
+            element = requireElement(superElem);
+            return !getElements(subElem, element).isEmpty();
+        } catch (CommitException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    private void persistElement(XmlElement element, @Nullable Element superElem) {
         Element elem = doc.createElement(element.getTagName());
 
         List<XmlAttribute> attributes = element.getAttributes();
@@ -132,11 +142,62 @@ public class XmlPersister {
             }
         }
 
-        element.setElement(elem);
+        if (!element.isPersisted()) {
+            element.createShadow();
+        }
         if (!element.hasChanges()) {
             element.setState(XmlElement.State.CLEAN);
         } else {
             element.setState(XmlElement.State.TOUCHED);
+        }
+    }
+
+    private Element requireElement(XmlElement xmlElement) throws CommitException {
+        List<Element> foundElems;
+        if (!xmlElement.isSubElement()) {
+            foundElems = getElements(xmlElement, null);
+        } else {
+            Element parentElem = requireElement(xmlElement.getParent());
+            foundElems = getElements(xmlElement, parentElem);
+        }
+
+        if (foundElems.size() == 1) {
+            return foundElems.get(0);
+        } else if (foundElems.size() > 1) {
+            throw new CommitException("Duplicate elements found for " + xmlElement.toString());
+        } else {
+            throw new CommitException("No element found in file for " + xmlElement.toString());
+        }
+    }
+
+    public List<Element> getElements(XmlElement xmlElement, @Nullable Element superElem) throws CommitException {
+        XmlElementShadow shadow = xmlElement.getShadow();
+        if (shadow == null) {
+            throw new CommitException(xmlElement.toString() + " does not have a shadow yet. Can not load from file.");
+        }
+
+        XPath xPath = XPathFactory.newInstance().newXPath();
+        try {
+            List<Element> found = nodeListToElementList((NodeList) xPath.compile(shadow.getXPath()).evaluate(doc, XPathConstants.NODESET));
+            if (superElem == null) {
+                return found;
+            } else {
+                return found.stream().filter(elem -> elem.getParentNode() == superElem).collect(Collectors.toList());
+            }
+        } catch (XPathExpressionException e) {
+            throw new CommitException("Exception compiling XPath for " + xmlElement.toString(), e);
+        }
+    }
+
+    private Element requireSubElement(Element superElem, XmlElement subElem) throws CommitException {
+        List<Element> foundElems = getElements(subElem, superElem);
+
+        if (foundElems.size() == 1) {
+            return foundElems.get(0);
+        } else if (foundElems.size() > 1) {
+            throw new CommitException("Duplicate elements found for " + subElem.toString());
+        } else {
+            throw new CommitException("No element found in file for " + subElem.toString());
         }
     }
 
@@ -151,15 +212,27 @@ public class XmlPersister {
     }
 
     public List<Element> find(String tagName, String textContent, XmlElement parent) {
-        Element element = parent.requireElement();
-        List<Element> elements = nodeListToElementList(element.getElementsByTagName(tagName));
-        return elements.stream().filter(elem -> elem.getTextContent().equals(textContent)).collect(Collectors.toList());
+        try {
+            Element element = requireElement(parent);
+            List<Element> elements = nodeListToElementList(element.getElementsByTagName(tagName));
+            return elements.stream().filter(elem -> elem.getTextContent().equals(textContent)).collect(Collectors.toList());
+        } catch (CommitException e) {
+            e.printStackTrace();
+        }
+
+        return Lists.newArrayList();
     }
 
     public List<Element> find(String tagName, String attributeName, String attributeValue, XmlElement parent) {
-        Element element = parent.requireElement();
-        List<Element> elements = nodeListToElementList(element.getElementsByTagName(tagName));
-        return elements.stream().filter(elem -> elem.getAttribute(attributeName).equals(attributeValue)).collect(Collectors.toList());
+        try {
+            Element element = requireElement(parent);
+            List<Element> elements = nodeListToElementList(element.getElementsByTagName(tagName));
+            return elements.stream().filter(elem -> elem.getAttribute(attributeName).equals(attributeValue)).collect(Collectors.toList());
+        } catch (CommitException e) {
+            e.printStackTrace();
+        }
+
+        return Lists.newArrayList();
     }
 
     public void writeToFile() throws CommitException {
@@ -190,14 +263,6 @@ public class XmlPersister {
         }
 
         return false;
-    }
-
-    private Element requireElement(XmlElement xmlElement) throws CommitException {
-        try {
-            return xmlElement.requireElement();
-        } catch (IllegalStateException e) {
-            throw new CommitException(e);
-        }
     }
 
     private File getFile() throws CommitException {

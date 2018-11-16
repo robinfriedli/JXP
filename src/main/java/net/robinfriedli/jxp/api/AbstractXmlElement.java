@@ -1,34 +1,30 @@
 package net.robinfriedli.jxp.api;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-
-import javax.annotation.Nullable;
-
-import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.events.AttributeChangingEvent;
 import net.robinfriedli.jxp.events.ElementChangingEvent;
 import net.robinfriedli.jxp.events.ElementCreatedEvent;
 import net.robinfriedli.jxp.events.ElementDeletingEvent;
 import net.robinfriedli.jxp.events.ValueChangingEvent;
-import net.robinfriedli.jxp.events.VirtualEvent;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.persist.Context;
-import net.robinfriedli.jxp.persist.ElementUtils;
 import net.robinfriedli.jxp.persist.Transaction;
-import org.w3c.dom.Element;
+import net.robinfriedli.jxp.persist.XmlElementShadow;
+import net.robinfriedli.jxp.persist.XmlPersister;
+
+import javax.annotation.Nullable;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Abstract class to extend for classes you wish to able to persist to an XML file.
- * Classes that extend this class can be persisted via the {@link net.robinfriedli.jxp.persist.Context#invoke(Runnable)}
+ * Classes that extend this class can be persisted via the {@link net.robinfriedli.jxp.persist.Context#invoke(boolean, Runnable)}
  * method using {@link #persist()}
  */
 public abstract class AbstractXmlElement implements XmlElement {
-
-    private Element element;
 
     private XmlElement parent;
 
@@ -48,18 +44,34 @@ public abstract class AbstractXmlElement implements XmlElement {
 
     private boolean locked = false;
 
-    // creating new element
+    private XmlElementShadow shadow;
 
     public AbstractXmlElement(String tagName, Map<String, String> attributeMap, Context context) {
-        this(tagName, attributeMap, Lists.newArrayList(), "", context);
+        this(tagName, attributeMap, Lists.newArrayList(), "", State.CONCEPTION, context);
+    }
+
+    public AbstractXmlElement(String tagName, Map<String, String> attributeMap, State state, Context context) {
+        this(tagName, attributeMap, Lists.newArrayList(), "", state, context);
     }
 
     public AbstractXmlElement(String tagName, Map<String, String> attributeMap, String textContent, Context context) {
-        this(tagName, attributeMap, Lists.newArrayList(), textContent, context);
+        this(tagName, attributeMap, Lists.newArrayList(), textContent, State.CONCEPTION, context);
+    }
+
+    public AbstractXmlElement(String tagName, Map<String, String> attributeMap, String textContent, State state, Context context) {
+        this(tagName, attributeMap, Lists.newArrayList(), textContent, state, context);
     }
 
     public AbstractXmlElement(String tagName, Map<String, String> attributeMap, List<XmlElement> subElements, Context context) {
-        this(tagName, attributeMap, subElements, "", context);
+        this(tagName, attributeMap, subElements, "", State.CONCEPTION, context);
+    }
+
+    public AbstractXmlElement(String tagName,
+                              Map<String, String> attributeMap,
+                              List<XmlElement> subElements,
+                              State state,
+                              Context context) {
+        this(tagName, attributeMap, subElements, "", state, context);
     }
 
     public AbstractXmlElement(String tagName,
@@ -67,11 +79,20 @@ public abstract class AbstractXmlElement implements XmlElement {
                               List<XmlElement> subElements,
                               String textContent,
                               Context context) {
+        this(tagName, attributeMap, subElements, textContent, State.CONCEPTION, context);
+    }
+
+    public AbstractXmlElement(String tagName,
+                              Map<String, String> attributeMap,
+                              List<XmlElement> subElements,
+                              String textContent,
+                              State state,
+                              Context context) {
         this.tagName = tagName;
         this.subElements = subElements;
         this.textContent = textContent;
+        this.state = state;
         this.context = context;
-        this.state = State.CONCEPTION;
 
         List<XmlAttribute> attributes = Lists.newArrayList();
         for (String attributeName : attributeMap.keySet()) {
@@ -79,31 +100,17 @@ public abstract class AbstractXmlElement implements XmlElement {
         }
         this.attributes = attributes;
 
-        subElements.forEach(sub -> sub.setParent(this));
-    }
-
-    // loading from file
-
-    public AbstractXmlElement(Element element, Context context) {
-        this(element, Lists.newArrayList(), context);
-    }
-
-    public AbstractXmlElement(Element element, List<XmlElement> subElements, Context context) {
-        this.element = element;
-        this.tagName = element.getTagName();
-        this.subElements = subElements;
-        this.textContent = ElementUtils.getTextContent(element);
-        this.context = context;
-        this.state = State.CLEAN;
-
-        List<XmlAttribute> attributes = Lists.newArrayList();
-        Map<String, String> attributeMap = ElementUtils.getAttributes(element);
-        for (String attributeName : attributeMap.keySet()) {
-            attributes.add(new XmlAttribute(this, attributeName, attributeMap.get(attributeName)));
+        if (state == State.CONCEPTION) {
+            subElements.forEach(sub -> sub.setParent(this));
+        } else if (state == State.CLEAN) {
+            // when an XmlElement is instantiated with State CLEAN that means it was created while initializing a new Context
+            // via DefaultPersistenceManager#getAllElements and thus already exists in the XmlFile. In this case we need
+            // to create an XmlElementShadow with the current state of the XmlElement.
+            shadow = new XmlElementShadow(this);
+        } else {
+            throw new PersistException("New XmlElements should be instantiated with either State CONCEPTION (default) " +
+                "or CLEAN (if the XmlElement was loaded from the XmlFile)");
         }
-        this.attributes = attributes;
-
-        subElements.forEach(sub -> sub.setParent(this));
     }
 
     @Override
@@ -112,57 +119,55 @@ public abstract class AbstractXmlElement implements XmlElement {
 
     @Override
     public void persist() {
-        Transaction transaction = context.getActiveTransaction();
+        Transaction transaction = context.getTransaction();
+        if (transaction == null) {
+            throw new PersistException("Context has no transaction. Use Context#invoke.");
+        }
+
+        if (isPersisted()) {
+            throw new PersistException("Cannot persist " + toString() + ". XmlElement is already persisted");
+        }
+
+        if (state != State.CONCEPTION) {
+            throw new PersistException("Cannot persist " + toString() + ". XmlElement is not in state CONCEPTION");
+        }
+
+        if (isSubElement()) {
+            throw new PersistException("Cannot persist sub-element " + toString() +
+                ". Sub-elements are persist as ElementChangingEvent via their parent");
+        }
 
         transaction.addChange(new ElementCreatedEvent(this));
     }
 
     @Override
-    public void phantomize() {
-        if (element != null) {
-            ElementUtils.destroy(element);
-            element = null;
-        }
-
-        setState(State.PHANTOM);
-    }
-
-    @Override
-    @Nullable
-    public Element getElement() {
-        return element;
-    }
-
-    @Override
-    public Element requireElement() throws IllegalStateException {
-        if (element == null) {
-            throw new IllegalStateException(toString() + " has no Element");
-        }
-
-        return element;
-    }
-
-    @Override
-    public void setElement(Element element) {
-        if (this.element != null) {
-            throw new IllegalStateException(toString() + " is already persisted as an element. Destroy the old element first.");
-        }
-
-        this.element = element;
-    }
-
-    @Override
     public void setParent(XmlElement parent) {
-        if (this.parent != null) {
-            throw new IllegalStateException(toString() + " already has a parent. Remove it from the old parent first.");
+        if (!isPersisted()) {
+            // this element has not been persisted yet, so it's safe to put it as a child
+            this.parent = parent;
+        } else if (this.parent != null && this.parent != parent) {
+            // this element already has a different parent, remove it from the old parent
+            if (this.parent.getState() != State.DELETION) {
+                this.parent.removeSubElement(this);
+            }
+            this.parent = parent;
+        } else if (this.parent != null) {
+            // parent is already set, do nothing
+        } else if (parent.isPersisted()) {
+            // both parent and child already exist in the XML file
+            // already do set the parent before verifying to help finding the element
+            this.parent = parent;
+            //verify that this is actually a subElement of parent
+            XmlPersister xmlPersister = context.getPersistenceManager().getXmlPersister();
+            boolean subElementOf = xmlPersister.isSubElementOf(this, parent);
+            if (!subElementOf) {
+                this.parent = null;
+                throw new PersistException("Can't set parent. " + toString() + " is not a child of " + parent.toString());
+            }
+        } else {
+            // this element already exists but it's parent doesn't
+            throw new UnsupportedOperationException("Cannot set parent. Cannot turn " + toString() + " into sub-element");
         }
-
-        this.parent = parent;
-    }
-
-    @Override
-    public void removeParent() {
-        parent = null;
     }
 
     @Override
@@ -182,10 +187,9 @@ public abstract class AbstractXmlElement implements XmlElement {
 
     @Override
     public boolean isPersisted() {
-        return element != null;
+        return shadow != null;
     }
 
-    @Deprecated
     @Override
     public boolean checkDuplicates(XmlElement element) {
         if (!this.getTagName().equals(element.getTagName())) return false;
@@ -231,18 +235,13 @@ public abstract class AbstractXmlElement implements XmlElement {
 
     @Override
     public void addSubElement(XmlElement element) {
-        Transaction transaction = context.getActiveTransaction();
-
-        if (state.isPhysical()) {
-            transaction.addChange(new ElementCreatedEvent(element, this));
-        } else {
-            transaction.addChange(VirtualEvent.wrap(new ElementCreatedEvent(element, this)));
-        }
+        addSubElements(Lists.newArrayList(element));
     }
 
     @Override
     public void addSubElements(List<XmlElement> elements) {
-        elements.forEach(this::addSubElement);
+        elements.forEach(elem -> elem.setParent(this));
+        addChange(ElementChangingEvent.subElementsAdded(this, elements));
     }
 
     @Override
@@ -252,20 +251,12 @@ public abstract class AbstractXmlElement implements XmlElement {
 
     @Override
     public void removeSubElement(XmlElement element) {
-        if (!subElements.contains(element)) {
-            throw new IllegalArgumentException(element.toString() + " is not a subElement of " + toString());
-        }
-
-        if (state.isPhysical()) {
-            element.delete();
-        } else {
-            VirtualEvent.interceptTransaction(context.getActiveTransaction(), element::delete);
-        }
+        removeSubElements(Lists.newArrayList(element));
     }
 
     @Override
     public void removeSubElements(List<XmlElement> elements) {
-        elements.forEach(this::removeSubElement);
+        addChange(ElementChangingEvent.subElementsRemoved(this, elements));
     }
 
     @Override
@@ -275,13 +266,14 @@ public abstract class AbstractXmlElement implements XmlElement {
 
     @Override
     public List<XmlElement> getSubElements() {
-        return subElements;
+        return this.subElements;
     }
 
     @Override
     public <E extends XmlElement> List<E> getSubElementsWithType(Class<E> type) {
         return getSubElements().stream().filter(type::isInstance).map(type::cast).collect(Collectors.toList());
     }
+
 
     @Override
     public XmlElement getSubElement(String id) {
@@ -344,7 +336,7 @@ public abstract class AbstractXmlElement implements XmlElement {
 
     @Override
     public boolean hasTextContent() {
-        return !Strings.isNullOrEmpty(textContent);
+        return textContent != null && !textContent.equals("");
     }
 
     @Override
@@ -357,17 +349,16 @@ public abstract class AbstractXmlElement implements XmlElement {
     @Override
     public void delete() {
         if (!isLocked()) {
-            Transaction transaction = context.getActiveTransaction();
+            Transaction transaction = context.getTransaction();
 
-            State oldState = state;
-            state = State.DELETION;
-            transaction.addChange(new ElementDeletingEvent(this, oldState));
-            if (hasSubElements()) {
-                // avoid concurrent modification
-                List<XmlElement> subElementsToDelete = Lists.newArrayList(subElements);
-                for (XmlElement subElement : subElementsToDelete) {
-                    subElement.delete();
-                }
+            if (transaction == null) {
+                throw new PersistException("Context has no transaction. Use Context#invoke");
+            }
+
+            if (isSubElement()) {
+                getParent().removeSubElement(this);
+            } else {
+                transaction.addChange(new ElementDeletingEvent(this, getState()));
             }
         } else {
             throw new PersistException("Unable to delete. " + toString() + " is locked");
@@ -377,16 +368,20 @@ public abstract class AbstractXmlElement implements XmlElement {
     @Override
     public void addChange(ElementChangingEvent change) {
         if (!isLocked()) {
-            Transaction transaction = context.getActiveTransaction();
+            if (state != State.CONCEPTION) {
+                Transaction transaction = context.getTransaction();
 
-            if (state.isPhysical()) {
+                if (transaction == null) {
+                    throw new PersistException("Context has no transaction. Use Context#invoke");
+                }
+
                 if (state == State.CLEAN) {
                     setState(State.TOUCHED);
                 }
                 changes.add(change);
                 transaction.addChange(change);
             } else {
-                transaction.addChange(VirtualEvent.wrap(change));
+                change.apply();
             }
         } else {
             throw new PersistException("Unable to add Change. " + toString() + " is locked.");
@@ -397,7 +392,7 @@ public abstract class AbstractXmlElement implements XmlElement {
     public void removeChange(ElementChangingEvent change) {
         changes.remove(change);
 
-        if (!hasChanges() && state.isPhysical()) {
+        if (!hasChanges()) {
             setState(State.CLEAN);
         }
     }
@@ -414,7 +409,7 @@ public abstract class AbstractXmlElement implements XmlElement {
 
     @Override
     public List<ElementChangingEvent> getChanges() {
-        return changes;
+        return this.changes;
     }
 
     @Override
@@ -511,6 +506,35 @@ public abstract class AbstractXmlElement implements XmlElement {
     }
 
     @Override
+    public XmlElementShadow getShadow() {
+        return shadow;
+    }
+
+    @Override
+    public void updateShadow() {
+        shadow.update();
+    }
+
+    @Override
+    public void updateShadow(ElementChangingEvent change) {
+        shadow.adopt(change);
+    }
+
+    @Override
+    public void revertShadow(ElementChangingEvent change) {
+        shadow.revert(change);
+    }
+
+    @Override
+    public void createShadow() {
+        if (shadow == null) {
+            shadow = new XmlElementShadow(this);
+        } else {
+            throw new PersistException(toString() + " already has a shadow");
+        }
+    }
+
+    @Override
     public State getState() {
         return state;
     }
@@ -541,6 +565,22 @@ public abstract class AbstractXmlElement implements XmlElement {
             }
         }
 
+        if (change.getAddedSubElements() != null) {
+            if (isRollback) {
+                subElements.removeAll(change.getAddedSubElements());
+            } else {
+                subElements.addAll(change.getAddedSubElements());
+            }
+        }
+
+        if (change.getRemovedSubElements() != null) {
+            if (isRollback) {
+                subElements.addAll(change.getRemovedSubElements());
+            } else {
+                subElements.removeAll(change.getRemovedSubElements());
+            }
+        }
+
         if (change.getChangedTextContent() != null) {
             if (isRollback) {
                 this.textContent = change.getChangedTextContent().getOldValue();
@@ -549,5 +589,6 @@ public abstract class AbstractXmlElement implements XmlElement {
             }
         }
     }
+
 
 }

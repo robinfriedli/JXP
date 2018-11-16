@@ -40,6 +40,7 @@ public class ContextImpl implements Context {
         rootElem = persistenceManager.getXmlPersister().getDocument().getDocumentElement().getTagName();
         this.persistenceManager = persistenceManager;
         this.elements = persistenceManager.getAllElements();
+        persistenceManager.buildTree(elements);
     }
 
     @Override
@@ -91,8 +92,13 @@ public class ContextImpl implements Context {
     }
 
     @Override
+    public List<XmlElement> getUsableElements() {
+        return getElements(e -> e.getState() != XmlElement.State.DELETION);
+    }
+
+    @Override
     public List<String> getUsedIds() {
-        return getElements().stream().map(XmlElement::getId).collect(Collectors.toList());
+        return getUsableElements().stream().map(XmlElement::getId).collect(Collectors.toList());
     }
 
     @Override
@@ -104,7 +110,7 @@ public class ContextImpl implements Context {
     @Override
     @Nullable
     public <E extends XmlElement> E getElement(String id, Class<E> type) {
-        List<E> foundElements = getElements().stream()
+        List<E> foundElements = getUsableElements().stream()
             .filter(element -> type.isInstance(element) && element.getId() != null && element.getId().equals(id))
             .map(type::cast)
             .collect(Collectors.toList());
@@ -136,7 +142,7 @@ public class ContextImpl implements Context {
 
     @Override
     public <E extends XmlElement> List<E> getInstancesOf(Class<E> c) {
-        return getElements().stream()
+        return getUsableElements().stream()
             .filter(c::isInstance)
             .map(c::cast)
             .collect(Collectors.toList());
@@ -144,7 +150,7 @@ public class ContextImpl implements Context {
 
     @Override
     public <E extends XmlElement> List<E> getInstancesOf(Class<E> c, Class... ignoredSubClasses) {
-        return getElements().stream()
+        return getUsableElements().stream()
             .filter(elem -> c.isInstance(elem) && Arrays.stream(ignoredSubClasses).noneMatch(clazz -> clazz.isInstance(elem)))
             .map(c::cast)
             .collect(Collectors.toList());
@@ -157,13 +163,15 @@ public class ContextImpl implements Context {
 
     @Override
     public void reloadElements() {
-        elements.forEach(XmlElement::phantomize);
         elements.clear();
         elements.addAll(persistenceManager.getAllElements());
     }
 
     @Override
     public void addElement(XmlElement element) {
+        if (element.getId() != null && getUsedIds().contains(element.getId())) {
+            throw new PersistException("There already is an element with id " + element.getId() + " in this Context");
+        }
         elements.add(element);
     }
 
@@ -236,9 +244,6 @@ public class ContextImpl implements Context {
         try {
             returnValue = task.call();
         } catch (Throwable e) {
-            if (instantApply) {
-                transaction.rollback();
-            }
             closeTx();
             throw new PersistException(e.getClass().getName() + " thrown during task run. Closing transaction.", e);
         }
@@ -340,20 +345,6 @@ public class ContextImpl implements Context {
     @Nullable
     public Transaction getTransaction() {
         return transaction;
-    }
-
-    @Override
-    public Transaction getActiveTransaction() {
-        if (transaction == null) {
-            throw new PersistException("Context has no transaction. Use Context#invoke");
-        }
-
-        return transaction;
-    }
-
-    @Override
-    public void setTransaction(Transaction transaction) {
-        this.transaction = transaction;
     }
 
     private void getTx(boolean instantApply, boolean applyOnly) {

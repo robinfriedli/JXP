@@ -10,10 +10,6 @@ public class PersistException extends RuntimeException {
         super(message);
     }
 
-    public PersistException(Throwable cause) {
-        super(cause);
-    }
-
     public PersistException(String message, Throwable cause) {
         super(message, cause);
     }
