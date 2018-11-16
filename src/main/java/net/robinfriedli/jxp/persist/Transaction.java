@@ -16,7 +16,7 @@ import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 
 /**
- * Holds all {@link Event}s that have been created within the current {@link Context#invoke(boolean, Callable)} method
+ * Holds all {@link Event}s that have been created within the current {@link Context#invoke(Callable)} method
  * call and applies them to the in memory elements after the Runnable / Callable is done and, if commit is true, saves
  * them to the XML file. Also reverts changes if the transaction failed.
  */
@@ -40,7 +40,7 @@ public class Transaction {
     }
 
     public void addChanges(List<Event> changes) {
-        this.changes.addAll(changes);
+        changes.addAll(changes);
     }
 
     public void addChanges(Event... changes) {
@@ -110,7 +110,8 @@ public class Transaction {
             } catch (CommitException e) {
                 rollback();
                 manager.reload();
-                throw new CommitException("Exception during commit. Transaction rolled back.", e);
+                context.reloadElements();
+                throw new CommitException("Exception during commit. Transaction rolled back and Context restored.", e);
             }
 
             context.getManager().fireTransactionCommitted(this);

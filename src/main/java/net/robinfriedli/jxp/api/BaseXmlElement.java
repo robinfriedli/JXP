@@ -2,6 +2,7 @@ package net.robinfriedli.jxp.api;
 
 import net.robinfriedli.jxp.persist.Context;
 import net.robinfriedli.jxp.persist.DefaultPersistenceManager;
+import org.w3c.dom.Element;
 
 import javax.annotation.Nullable;
 
@@ -20,8 +21,8 @@ public class BaseXmlElement extends AbstractXmlElement {
         super(tagName, attributeMap, subElements, textContent, context);
     }
 
-    public BaseXmlElement(String tagName, Map<String, String> attributeMap, List<XmlElement> subElements, String textContent, State state, Context context) {
-        super(tagName, attributeMap, subElements, textContent, state, context);
+    public BaseXmlElement(Element element, List<XmlElement> subElements, Context context) {
+        super(element, subElements, context);
     }
 
     @Nullable

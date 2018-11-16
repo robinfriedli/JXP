@@ -1,45 +1,21 @@
 package net.robinfriedli.jxp.persist;
 
-import net.robinfriedli.jxp.events.ElementChangingEvent;
-import net.robinfriedli.jxp.events.Event;
-import net.robinfriedli.jxp.exceptions.PersistException;
-
 import java.util.List;
+
+import net.robinfriedli.jxp.events.Event;
+import org.w3c.dom.Element;
 
 /**
  * Type of transaction used by the Context#apply method. Use cautiously when dealing with changes that would break a
- * regular commit, e.g. dealing with elements that can't uniquely be identified. In this case you need to commit the
- * changes manually using the {@link XmlPersister}. Be sure to update the XmlElement's {@link XmlElementShadow} if
- * needed using the {@link net.robinfriedli.jxp.api.XmlElement#updateShadow(ElementChangingEvent)} method
- *
- * Example:
- * <pre>
- *  getContext().apply(() -> emoji.removeKeywords(duplicates));
- *  List<Element> duplicateElements = getXmlPersister().find("keyword", keyword.getTextContent(), emoji);
- *  duplicateElements.forEach(elem -> elem.getParentNode().removeChild(elem));
- * </pre>
+ * regular commit one way or the other. Was used before JXP v0.7 to deal with duplicate Elements because {@link XmlPersister}
+ * could not find / uniquely identify the {@link Element} that needed to be changed. But then 0.7 eliminated the need to
+ * locate the Element in the first place meaning all obvious use cases for this class vanished. Only use if you know
+ * what you are doing.
  */
 public class ApplyOnlyTx extends Transaction {
 
     public ApplyOnlyTx(Context context, List<Event> changes) {
         super(context, changes);
-    }
-
-    @Override
-    public void apply() {
-        for (Event change : getChanges()) {
-            try {
-                change.apply();
-                if (change instanceof ElementChangingEvent) {
-                    change.getSource().removeChange((ElementChangingEvent) change);
-                }
-            } catch (PersistException | UnsupportedOperationException e) {
-                rollback();
-                throw new PersistException("Exception while applying transaction. Rolled back.", e);
-            }
-        }
-
-        getContext().getManager().fireTransactionApplied(this);
     }
 
     @Override
