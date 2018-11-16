@@ -9,13 +9,11 @@ import net.robinfriedli.jxp.events.ElementChangingEvent;
 import net.robinfriedli.jxp.events.ValueChangingEvent;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.persist.Context;
-import net.robinfriedli.jxp.persist.InstantApplyTx;
-import net.robinfriedli.jxp.persist.Transaction;
-import net.robinfriedli.jxp.persist.XmlElementShadow;
+import org.w3c.dom.Element;
 
 /**
  * Enables classes to be persisted as XML elements. Extend {@link AbstractXmlElement} to persist your elements using
- * {@link Context#invoke(boolean, Runnable)}.
+ * {@link Context#invoke(Runnable)}.
  */
 public interface XmlElement {
 
@@ -25,20 +23,40 @@ public interface XmlElement {
     void persist();
 
     /**
-     * This method safely defines the parent of this XmlElement. This is only allowed when this XmlElement is newly
-     * being created or when building the tree while initializing a new Context, meaning both the parent element
-     * and this element are persisted. In that case {@link net.robinfriedli.jxp.persist.XmlPersister#isSubElementOf(XmlElement, XmlElement)}
-     * will check if the parent is in fact the parent of this Element in the file.
-     *
-     * It is also possible to move a sub-element to a different parent, in which case the sub-element will be removed
-     * from the old parent, unless the old parent is in {@link State#DELETION} anyway.
-     *
-     * This method should only be used by the API. Implementers should use {@link #addSubElement(XmlElement)}. In that
-     * case and when sub-elements are passed to the constructor the API will set the parent automatically. The API also
-     * sets all parents for all existing XmlElements when initializing a new {@link Context} via the
-     * {@link net.robinfriedli.jxp.persist.DefaultPersistenceManager#buildTree(List)} method.
+     * Removes the {@link Element} represented by this XmlElement from the XML document. Phantoms can be persisted again
+     * by using the {@link #persist()} method, or, for subElements, by adding it to a new parent using {@link #addSubElement(XmlElement)}
+     * after removing it from the old one
+     */
+    void phantomize();
+
+    /**
+     * @return the actual {@link Element} in the XML document represented by this XmlElement. Null if in State CONCEPTION
+     * or PHANTOM.
+     */
+    @Nullable
+    Element getElement();
+
+    /**
+     * Like {@link #getElement()} but throws Exception if null
+     */
+    Element requireElement() throws IllegalStateException;
+
+    /**
+     * Sets the created {@link Element} for this XmlElement. Used after a new XmlElement has been persisted.
+     */
+    void setElement(Element element);
+
+    /**
+     * Defines the parent of a subElement. This is not permitted if the element already has a parent, the element first
+     * has to be removed from the old parent using {@link #removeSubElement(XmlElement)}. This method should generally
+     * only be used by the API.
      */
     void setParent(XmlElement parent);
+
+    /**
+     * Set the parent of this XmlElement to null. Used for subElements when {@link #removeSubElement(XmlElement)} is called
+     */
+    void removeParent();
 
     /**
      * @return the parent Element of this XmlElement
@@ -51,7 +69,7 @@ public interface XmlElement {
     boolean isSubElement();
 
     /**
-     * @return true if the XmlElement has an {@link XmlElementShadow}, meaning it has been persisted to the XML file
+     * @return true if the XmlElement has an {@link Element}, meaning it has been persisted to the XML file
      */
     boolean isPersisted();
 
@@ -216,33 +234,7 @@ public interface XmlElement {
 
     /**
      * Define some way to identify this XmlElement instance, ideally through either one of its attributes or text content.
-     * Used to check for duplicates when adding a new element and then automatically applying the changes from the new
-     * element to the old element or easily loading an element from the {@link Context}.
-     *
-     * If there is no way to uniquely identify this XmlElement, just return null. In which case duplicates will not be
-     * checked when adding an XmlElement of this type and you'll have to load it from the {@link Context} through your
-     * own criteria
-     *
-     * Note that using an ID drastically affects performance when dealing with very large files because it checks
-     * if there already is an element with the same id when adding it to the Context.
-     * E.g. creating 100000 elements with id at once in an empty Context takes ~700 seconds (~820 seconds if it's an
-     * {@link InstantApplyTx}). The same task takes less than a second without IDs. Detailed performance log:
-     *
-     * Done initializing after 99 ms
-     * Transaction took 93 ms to run. Now applying
-     * 10000 milestone reached after 7 seconds
-     * 20000 milestone reached after 25 seconds
-     * 30000 milestone reached after 59 seconds
-     * 40000 milestone reached after 111 seconds
-     * 50000 milestone reached after 173 seconds
-     * 60000 milestone reached after 251 seconds
-     * 70000 milestone reached after 342 seconds
-     * 80000 milestone reached after 449 seconds
-     * 90000 milestone reached after 571 seconds
-     * Transaction finished applying after 707 seconds
-     * Transaction finished committing after 708 seconds
-     * All elements saved after 708 seconds
-     * (before v0.5: 1100 seconds)
+     * If there is no way to uniquely identify this XmlElement, just return null.
      *
      * @return unique id for this XmlElement instance
      */
@@ -260,6 +252,7 @@ public interface XmlElement {
      * @param elementToCheck XmlElement to compare
      * @return true if the specified XmlElement would duplicate an already existing Element
      */
+    @Deprecated
     boolean checkDuplicates(XmlElement elementToCheck);
 
     /**
@@ -272,7 +265,7 @@ public interface XmlElement {
 
     /**
      * Delete this XmlElement. Creates an {@link net.robinfriedli.jxp.events.ElementDeletingEvent} which, when applied,
-     * will set this XmlElement to {@link State#DELETION}. Only when committing the XmlElement will be fully removed from
+     * will set this XmlElement to {@link State#PHANTOM}. Only when committing the XmlElement will be fully removed from
      * its {@link Context} and XML file.
      */
     void delete();
@@ -395,39 +388,6 @@ public interface XmlElement {
     boolean isLocked();
 
     /**
-     * @return this XmlElements current {@link XmlElementShadow} representing its current state in the XmlFile.
-     * Used to identify this XmlElement in the file
-     */
-    XmlElementShadow getShadow();
-
-    /**
-     * Update this XmlElements {@link XmlElementShadow}. Used after committing a change made to this XmlElement.
-     */
-    void updateShadow();
-
-    /**
-     * Applies an {@link ElementChangingEvent} to this XmlElement's {@link XmlElementShadow}. Used when said change
-     * was committed.
-     *
-     * @param change the recently committed ElementChangingEvent
-     */
-    void updateShadow(ElementChangingEvent change);
-
-    /**
-     * Reverts an {@link ElementChangingEvent} from this XmlElement's {@link XmlElementShadow}. Used when a
-     * {@link Transaction} is rolling back and reverting a change that has been committed and thus applied to the shadow
-     * using {@link #updateShadow(ElementChangingEvent)}
-     *
-     * @param change
-     */
-    void revertShadow(ElementChangingEvent change);
-
-    /**
-     * Create an {@link XmlElementShadow}. Used when committing a new XmlElement in state conception.
-     */
-    void createShadow();
-
-    /**
      * @return {@link State} of this XmlElement
      */
     State getState();
@@ -444,24 +404,49 @@ public interface XmlElement {
      */
     enum State {
         /**
-         * Element has been created but not yet persisted
+         * XmlElement instance has just been created but not yet persisted to the XML document
          */
-        CONCEPTION,
+        CONCEPTION(false),
 
         /**
          * Element exists and has no uncommitted changes
          */
-        CLEAN,
+        CLEAN(true),
 
         /**
          * Element exists in XML file but has uncommitted changes
          */
-        TOUCHED,
+        TOUCHED(true),
 
         /**
-         * Element is being deleted but still exists in XML file
+         * Unlike PHANTOM the Element has not actually been deleted yet and still exists in the XML document. This is
+         * state of elements after the delete() method has been called but before the change has been committed.
+         *
+         * Physical is still false even though that is technically incorrect since this state is only temporary during
+         * Transactions and we want to treat those element like phantoms. Even IF the element would get persisted again
+         * in the same transaction, it would get persisted with all changes applied. Thus eliminating the need to commit
+         * changes as with normal physical elements.
          */
-        DELETION
+        DELETION(false),
+
+        /**
+         * The XmlElement's element has been removed from the XML document
+         */
+        PHANTOM(false);
+
+        private boolean physical;
+
+        State(boolean physical) {
+            this.physical = physical;
+        }
+
+        /**
+         * @return true if the the element has a physical element in the XML file in this state. Defines whether or not
+         * changes made to an element need to be committed.
+         */
+        public boolean isPhysical() {
+            return physical;
+        }
     }
 
 }

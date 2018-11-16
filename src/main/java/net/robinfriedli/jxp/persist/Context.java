@@ -9,6 +9,8 @@ import javax.annotation.Nullable;
 import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.queries.Conditions;
 import net.robinfriedli.jxp.queries.QueryResult;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
 
 /**
  * Main entry to the persistence layer. Represents an XML document and holds all its elements as {@link XmlElement}
@@ -51,11 +53,6 @@ public interface Context {
      * @return all XmlElements in this Context that match {@param predicate}
      */
     List<XmlElement> getElements(Predicate<XmlElement> predicate);
-
-    /**
-     * @return All Elements that are not in {@link net.robinfriedli.jxp.api.XmlElement.State} DELETION
-     */
-    List<XmlElement> getUsableElements();
 
     /**
      * @return all Ids that are used by XmlElements in this Context
@@ -126,7 +123,9 @@ public interface Context {
     QueryResult<List<XmlElement>> query(Predicate<XmlElement> condition);
 
     /**
-     * Reload all Elements from the XML File. This overrides any uncommitted changes.
+     * Reload all Elements from the XML File. This overrides any uncommitted changes. Used after rollback since the
+     * {@link XmlPersister} will create a new {@link Document}, meaning all the underlying {@link Element} of all
+     * XmlElements in this Context can't be used anymore.
      */
     void reloadElements();
 
@@ -260,10 +259,11 @@ public interface Context {
     void invoke(boolean commit, boolean instantApply, Runnable task, Object envVar);
 
     /**
-     * Runs a task in an apply-only {@link Transaction} that will never be committed or saved as uncommitted transaction
-     * in this Context. Use cautiously if you want to apply the changes to the XML file using the {@link XmlPersister}
-     * manually. Used for dealing with changes that would otherwise throw an exception when committing, e.g. dealing
-     * with duplicate elements. See {@link ApplyOnlyTx}
+     * Runs a task in an {@link ApplyOnlyTx} that will never be committed or saved as uncommitted transaction
+     * in this Context. Use cautiously when dealing with changes that would break a regular commit one wy or the other.
+     * Was used before JXP v0.7 to deal with duplicate Elements because {@link XmlPersister} could not find / uniquely
+     * identify the {@link Element} that needed to be changed. But then 0.7 eliminated the need to locate the Element in
+     * the first place meaning all obvious use cases for this class vanished. Only use if you know what you are doing.
      *
      * @param task to run
      */
@@ -295,10 +295,22 @@ public interface Context {
     Object getEnvVar();
 
     /**
-     * @return the currently active Transaction
+     * @return the current Transaction
      */
     @Nullable
     Transaction getTransaction();
+
+    /**
+     * @return the current Transaction, requires an active Transaction
+     */
+    Transaction getActiveTransaction();
+
+    /**
+     * Set this Context's Transaction. Used internally to switch between Transaction e.g. for VirtualEvents
+     *
+     * @param transaction to set
+     */
+    void setTransaction(Transaction transaction);
 
     /**
      * Partitionable Context that can be bound to an object of Type E. The Context can then be retrieved from the
@@ -316,6 +328,14 @@ public interface Context {
          * @return object of Type E
          */
         E getBindingObject();
+
+        /**
+         * The BindableContext should have an id the Context can consistently be identified with so that its XML file
+         * can be loaded. Ideally the Object the BindableContext is bound to should have some sort of id.
+         *
+         * @return id of BindableContext, used as part of filename
+         */
+        String getId();
 
         /**
          * removes this BindableContext from its ContextManager and deletes its file.

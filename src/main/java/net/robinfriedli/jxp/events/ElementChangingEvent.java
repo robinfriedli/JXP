@@ -1,6 +1,5 @@
 package net.robinfriedli.jxp.events;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -20,46 +19,24 @@ public class ElementChangingEvent extends Event {
     @Nullable
     private final ValueChangingEvent<String> changedTextContent;
 
-    @Nullable
-    private final List<XmlElement> addedSubElements;
-
-    @Nullable
-    private final List<XmlElement> removedSubElements;
-
     public ElementChangingEvent(AttributeChangingEvent changedAttribute) {
-        this(changedAttribute.getSource(), Lists.newArrayList(changedAttribute), null, null, null);
+        this(changedAttribute.getSource(), Lists.newArrayList(changedAttribute), null);
     }
 
     public ElementChangingEvent(XmlElement source, List<AttributeChangingEvent> changedAttributes) {
-        this(source, changedAttributes, null, null, null);
+        this(source, changedAttributes, null);
     }
 
     public ElementChangingEvent(ValueChangingEvent<String> changedTextContent) {
-        this(changedTextContent.getSource(), null, changedTextContent, null, null);
-    }
-
-    public ElementChangingEvent(XmlElement source,
-                                List<AttributeChangingEvent> changedAttributes,
-                                ValueChangingEvent<String> changedTextContent) {
-        this(source, changedAttributes, changedTextContent, null, null);
-    }
-
-    public ElementChangingEvent(XmlElement source,
-                                List<XmlElement> addedSubElements,
-                                List<XmlElement> removedSubElements) {
-        this(source, null, null, addedSubElements, removedSubElements);
+        this(changedTextContent.getSource(), null, changedTextContent);
     }
 
     public ElementChangingEvent(XmlElement source,
                                 @Nullable List<AttributeChangingEvent> changedAttributes,
-                                @Nullable ValueChangingEvent<String> changedTextContent,
-                                @Nullable List<XmlElement> addedSubElements,
-                                @Nullable List<XmlElement> removedSubElements) {
+                                @Nullable ValueChangingEvent<String> changedTextContent) {
         super(source);
         this.changedAttributes = changedAttributes;
         this.changedTextContent = changedTextContent;
-        this.addedSubElements = addedSubElements;
-        this.removedSubElements = removedSubElements;
 
         if (changedAttributes != null && changedAttributes.stream().anyMatch(a -> a.getSource() != getSource())) {
             throw new UnsupportedOperationException("Attempting to pass an attribute change to an element change of a different source");
@@ -67,14 +44,6 @@ public class ElementChangingEvent extends Event {
 
         if (changedTextContent != null && changedTextContent.getSource() != getSource()) {
             throw new UnsupportedOperationException("Attempting to pass text content change to an element change of a different source");
-        }
-
-        if (addedSubElements != null && addedSubElements.stream().anyMatch(e -> e.getParent() != getSource())) {
-            throw new UnsupportedOperationException("Attempting to pass added sub elements to an element change of a different source");
-        }
-
-        if (removedSubElements != null && removedSubElements.stream().anyMatch(e -> e.getParent() != getSource())) {
-            throw new UnsupportedOperationException("Attempting to pass removed sub elements to an element change of a different source");
         }
     }
 
@@ -86,16 +55,6 @@ public class ElementChangingEvent extends Event {
     @Nullable
     public ValueChangingEvent<String> getChangedTextContent() {
         return changedTextContent;
-    }
-
-    @Nullable
-    public List<XmlElement> getAddedSubElements() {
-        return addedSubElements;
-    }
-
-    @Nullable
-    public List<XmlElement> getRemovedSubElements() {
-        return removedSubElements;
     }
 
     @Override
@@ -113,9 +72,7 @@ public class ElementChangingEvent extends Event {
     public void revert() {
         if (isApplied()) {
             getSource().revertChange(this);
-            if (isCommitted()) {
-                getSource().revertShadow(this);
-            } else {
+            if (!isCommitted()) {
                 getSource().removeChange(this);
             }
         }
@@ -125,15 +82,12 @@ public class ElementChangingEvent extends Event {
     public void commit(DefaultPersistenceManager persistenceManager) throws CommitException {
         persistenceManager.commitElementChanges(this);
         setCommitted(true);
-        getSource().updateShadow(this);
         getSource().removeChange(this);
     }
 
     public boolean isEmpty() {
         return (changedAttributes == null || changedAttributes.isEmpty())
-            && (changedTextContent == null)
-            && (addedSubElements == null || addedSubElements.isEmpty())
-            && (removedSubElements == null || removedSubElements.isEmpty());
+            && (changedTextContent == null);
     }
 
     public boolean attributeChanged(String attributeName) {
@@ -167,22 +121,6 @@ public class ElementChangingEvent extends Event {
 
     public static ElementChangingEvent attributeChange(AttributeChangingEvent attributeChange) {
         return new ElementChangingEvent(attributeChange);
-    }
-
-    public static ElementChangingEvent subElementsAdded(XmlElement source, XmlElement... subElements) {
-        return new ElementChangingEvent(source, Arrays.asList(subElements), null);
-    }
-
-    public static ElementChangingEvent subElementsAdded(XmlElement source, List<XmlElement> subElements) {
-        return new ElementChangingEvent(source, subElements, null);
-    }
-
-    public static ElementChangingEvent subElementsRemoved(XmlElement source, XmlElement... subElements) {
-        return new ElementChangingEvent(source, null, Arrays.asList(subElements));
-    }
-
-    public static ElementChangingEvent subElementsRemoved(XmlElement source, List<XmlElement> subElements) {
-        return new ElementChangingEvent(source, null, subElements);
     }
 
     public static ElementChangingEvent textContentChange(ValueChangingEvent<String> changedTextContent) {

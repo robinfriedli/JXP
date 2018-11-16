@@ -10,6 +10,10 @@ public class CommitException extends Exception {
         super(message);
     }
 
+    public CommitException(Throwable cause) {
+        super(cause);
+    }
+
     public CommitException(String message, Throwable cause) {
         super(message, cause);
     }

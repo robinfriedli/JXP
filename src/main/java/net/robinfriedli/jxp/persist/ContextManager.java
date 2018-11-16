@@ -32,32 +32,19 @@ public class ContextManager {
         this.context = new ContextImpl(this, persistenceManager, path);
     }
 
-    public <E> ContextManager(String path, E bindingObject, DefaultPersistenceManager persistenceManager) {
-        this(path, bindingObject, persistenceManager, Lists.newArrayList());
+    public <E> ContextManager(String path, E bindingObject, String id, DefaultPersistenceManager persistenceManager) {
+        this(path, bindingObject, id, persistenceManager, Lists.newArrayList());
     }
 
     public <E> ContextManager(String path,
                               E bindingObject,
+                              String id,
                               DefaultPersistenceManager persistenceManager,
                               List<EventListener> listeners) {
         this.path = path;
         this.listeners = listeners;
         this.context = new ContextImpl(this, persistenceManager, path);
-        createBoundContext(bindingObject, persistenceManager);
-    }
-
-    public <E> ContextManager(String path, List<E> bindingObjects, DefaultPersistenceManager persistenceManager) {
-        this(path, persistenceManager, bindingObjects, Lists.newArrayList());
-    }
-
-    public <E> ContextManager(String path,
-                              DefaultPersistenceManager persistenceManager,
-                              List<E> bindingObjects,
-                              List<EventListener> listeners) {
-        this.path = path;
-        this.listeners = listeners;
-        this.context = new ContextImpl(this, persistenceManager, path);
-        createBoundContexts(bindingObjects, persistenceManager);
+        createBoundContext(bindingObject, id, persistenceManager);
     }
 
     public String getPath() {
@@ -68,19 +55,9 @@ public class ContextManager {
         return context;
     }
 
-    public <E> void createBoundContext(E bindingObject, DefaultPersistenceManager persistenceManager) {
-        Context.BindableContext<E> bindableContext = new BindableContextImpl<>(this, bindingObject, persistenceManager);
+    public <E> void createBoundContext(E bindingObject, String id, DefaultPersistenceManager persistenceManager) {
+        Context.BindableContext<E> bindableContext = new BindableContextImpl<>(this, bindingObject, id, persistenceManager);
         boundContexts.add(bindableContext);
-    }
-
-    public <E> void createBoundContexts(List<E> bindingObjects, DefaultPersistenceManager persistenceManager) {
-        List<Context.BindableContext> bindableContexts = Lists.newArrayList();
-
-        for (E bindingObject : bindingObjects) {
-            bindableContexts.add(new BindableContextImpl<>(this, bindingObject, persistenceManager));
-        }
-
-        boundContexts.addAll(bindableContexts);
     }
 
     public <E> Context getContext(E boundObject) {
@@ -156,9 +133,9 @@ public class ContextManager {
         // equals boundObject, so both must be of the same type
         @SuppressWarnings("unchecked")
         List<Context.BindableContext<E>> matchedContexts = boundContexts.stream()
-                .filter(context -> context.getBindingObject().equals(boundObject))
-                .map(c -> (Context.BindableContext<E>) c)
-                .collect(Collectors.toList());
+            .filter(context -> context.getBindingObject().equals(boundObject))
+            .map(c -> (Context.BindableContext<E>) c)
+            .collect(Collectors.toList());
 
         if (matchedContexts.size() == 1) {
             return matchedContexts.get(0);
