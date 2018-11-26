@@ -143,11 +143,8 @@ that object. The JxpBackend holds all Context instances created by it, all Binda
 parameter | description
 --- | ---
 first parameter (optional): | commit (boolean), set true if all changes made during this task should be committed to the XML file. If false the transaction will be added to the Context's uncommitted transactions. Default: true
-| 
 second parameter (optional): | instantApply (boolean). Defines whether all changes should be applied to the XmlElement instance upon adding it to the transaction immediately. That means all changes are available within the invoked task and not only after the transaction. E.g. if false changing an attribute using elem.setAttribute("test", "value") and then calling elem.getAttribute("test").getValue() will still return the old value if still inside the transaction
-|
 third parameter: | the actual task to run, a Callable or Runnable depending on whether your task should return something or not
-|
 fourth parameter (optional): | any Object to set as this Context's environment variable. Could be any object you need anywhere in Context with this transaction. E.g. say you're developing a Discord bot and you've implemented an EventListener that sends a message after an Element has been added. In this case you could set the MessageChannel the command came from as envVar to send the message to the right channel.
 
 There are two other variants of the invoke method: invokeWithoutListeners() and futureInvoke(). futureInvoke, if used
