@@ -64,7 +64,7 @@ public class ElementChangingEvent extends Event {
         } else {
             getSource().applyChange(this);
             setApplied(true);
-            getSource().getContext().getManager().fireElementChanging(this);
+            getSource().getContext().getBackend().fireElementChanging(this);
         }
     }
 

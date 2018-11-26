@@ -12,6 +12,7 @@ public class XmlAttribute {
     public XmlAttribute(XmlElement parentElement, String attributeName) {
         this.parentElement = parentElement;
         this.attributeName = attributeName;
+        this.value = "";
     }
 
     public XmlAttribute(XmlElement parentElement, String attributeName, String value) {
@@ -36,6 +37,22 @@ public class XmlAttribute {
         return this.value;
     }
 
+    public <V> V getValue(Class<V> target) {
+        return StringConverter.convert(value, target);
+    }
+
+    public int getInt() {
+        return StringConverter.convert(value, Integer.class);
+    }
+
+    public boolean getBool() {
+        return StringConverter.convert(value, Boolean.class);
+    }
+
+    public float getFloat() {
+        return StringConverter.convert(value, Float.class);
+    }
+
     public void applyChange(AttributeChangingEvent change) throws UnsupportedOperationException {
         applyChange(change, false);
     }
@@ -54,7 +71,14 @@ public class XmlAttribute {
             throw new UnsupportedOperationException("Change can't be applied to this XmlAttribute since the change does not refer to this attribute");
         }
 
-        this.value = isRollback ? change.getOldValue() : change.getNewValue();
+        if (isRollback) {
+            value = change.getOldValue();
+            if (change.isCommitted() && parentElement.isPersisted()) {
+                parentElement.requireElement().setAttribute(attributeName, change.getOldValue());
+            }
+        } else {
+            value = change.getNewValue();
+        }
         change.setApplied(true);
     }
 

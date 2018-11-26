@@ -13,6 +13,7 @@ import net.robinfriedli.jxp.events.AttributeChangingEvent;
 import net.robinfriedli.jxp.events.ElementChangingEvent;
 import net.robinfriedli.jxp.events.ElementCreatedEvent;
 import net.robinfriedli.jxp.events.ElementDeletingEvent;
+import net.robinfriedli.jxp.events.RecursiveDeletingEvent;
 import net.robinfriedli.jxp.events.ValueChangingEvent;
 import net.robinfriedli.jxp.events.VirtualEvent;
 import net.robinfriedli.jxp.exceptions.PersistException;
@@ -265,7 +266,15 @@ public abstract class AbstractXmlElement implements XmlElement {
 
     @Override
     public void removeSubElements(List<XmlElement> elements) {
-        elements.forEach(this::removeSubElement);
+        if (!subElements.containsAll(elements)) {
+            throw new IllegalArgumentException("This element does not ");
+        }
+
+        if (state.isPhysical()) {
+            elements.forEach(XmlElement::delete);
+        } else {
+            VirtualEvent.interceptTransaction(context.getActiveTransaction(), () -> elements.forEach(XmlElement::delete));
+        }
     }
 
     @Override
@@ -361,14 +370,11 @@ public abstract class AbstractXmlElement implements XmlElement {
 
             State oldState = state;
             state = State.DELETION;
-            transaction.addChange(new ElementDeletingEvent(this, oldState));
+            ElementDeletingEvent deletingEvent = new ElementDeletingEvent(this, oldState);
             if (hasSubElements()) {
-                // avoid concurrent modification
-                List<XmlElement> subElementsToDelete = Lists.newArrayList(subElements);
-                for (XmlElement subElement : subElementsToDelete) {
-                    subElement.delete();
-                }
+                RecursiveDeletingEvent.createRecursive(this, deletingEvent);
             }
+            transaction.addChange(deletingEvent);
         } else {
             throw new PersistException("Unable to delete. " + toString() + " is locked");
         }
@@ -544,6 +550,9 @@ public abstract class AbstractXmlElement implements XmlElement {
         if (change.getChangedTextContent() != null) {
             if (isRollback) {
                 this.textContent = change.getChangedTextContent().getOldValue();
+                if (change.isCommitted() && isPersisted()) {
+                    requireElement().setTextContent(change.getChangedTextContent().getOldValue());
+                }
             } else {
                 this.textContent = change.getChangedTextContent().getNewValue();
             }

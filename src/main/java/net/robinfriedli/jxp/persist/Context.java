@@ -1,11 +1,13 @@
 package net.robinfriedli.jxp.persist;
 
+import java.io.File;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.function.Predicate;
 
 import javax.annotation.Nullable;
 
+import net.robinfriedli.jxp.api.JxpBackend;
 import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.queries.Conditions;
 import net.robinfriedli.jxp.queries.QueryResult;
@@ -20,9 +22,37 @@ import org.w3c.dom.Element;
 public interface Context {
 
     /**
-     * @return the {@link ContextManager} for this Context
+     * @return the {@link JxpBackend} instance that created this Context
      */
-    ContextManager getManager();
+    JxpBackend getBackend();
+
+    /**
+     * @return the {@link Document dom Document} represented by this Context
+     */
+    Document getDocument();
+
+    /**
+     * @return the XML file this Context is persisted to.
+     */
+    @Nullable
+    File getFile();
+
+    /**
+     * @return true if this Context is persisted to a file
+     */
+    boolean isPersistent();
+
+    /**
+     * Delete this Context's XML file
+     */
+    void deleteFile();
+
+    /**
+     * Persist this context to an XML file, if based on a {@link Document} instance.
+     *
+     * @param path the path to save the Context to.
+     */
+    void persist(String path);
 
     /**
      * @return the {@link DefaultPersistenceManager} for this Context
@@ -121,13 +151,6 @@ public interface Context {
      * @return
      */
     QueryResult<List<XmlElement>> query(Predicate<XmlElement> condition);
-
-    /**
-     * Reload all Elements from the XML File. This overrides any uncommitted changes. Used after rollback since the
-     * {@link XmlPersister} will create a new {@link Document}, meaning all the underlying {@link Element} of all
-     * XmlElements in this Context can't be used anymore.
-     */
-    void reloadElements();
 
     /**
      * Add Element to memory
@@ -259,9 +282,58 @@ public interface Context {
     void invoke(boolean commit, boolean instantApply, Runnable task, Object envVar);
 
     /**
+     * A {@link #invoke(boolean, boolean, Callable)} implementation that will be executed asynchronously. This is
+     * required for tasks invoked after the Transaction has stopped recording but before the Transaction has been
+     * committed and closed. When this happens depends on whether it is an InstantApplyTx or not; if it is an
+     * InstantApplyTx the Transaction will keep recording and applying changes until {@link Transaction#commit(DefaultPersistenceManager)}
+     * is called, if it is not it's until {@link Transaction#apply()} is called. After that point changes can neither
+     * be added nor the regular invoke method can be used.
+     *
+     * This is typically used in listeners (for InstantApplyTxs this is only required for the transaction committed
+     * event) in which case the returned {@link QueuedTask} will be added to current Transaction and executed
+     * after the Transaction is done. This method can also be used freely in which case the implementor decides when to
+     * execute it.
+     *
+     * @param callable the callable to call in the future
+     * @param cancelOnFailure if the task has been queued to a transaction cancel it when the transaction fails
+     * @param triggerListeners trigger or mute listeners for the invoked task
+     * @param <E> the type the callable returns
+     * @return the {@link QueuedTask} that will be executed after the current Transaction is done automatically,
+     * if called within Transaction (e.g EventListeners)
+     */
+    <E> QueuedTask<E> futureInvoke(boolean commit, boolean instantApply, boolean cancelOnFailure, boolean triggerListeners, Callable<E> callable);
+
+    /**
+     * calls {@link #futureInvoke(boolean, boolean, boolean, boolean, Callable)} with default values commit = true,
+     * instantApply = true
+     */
+    <E> QueuedTask<E> futureInvoke(boolean cancelOnFailure, boolean triggerListeners, Callable<E> callable);
+
+    /**
+     * {@link #futureInvoke(boolean, boolean, boolean, boolean, Callable)} with default values commit = true,
+     * instantApply = true, cancelOnFailure = true, triggerListeners = true
+     */
+    <E> QueuedTask<E> futureInvoke(Callable<E> callable);
+
+    /**
+     * calls {@link #invoke(boolean, boolean, Callable)} and temporarily disables listeners
+     */
+    <E> E invokeWithoutListeners(boolean commit, boolean instantApply, Callable<E> callable);
+
+    /**
+     * {@link #invokeWithoutListeners(boolean, boolean, Callable)} with  default values commit = true
+     * and instantApply = true
+     */
+    <E> E invokeWithoutListeners(Callable<E> callable);
+
+    void invokeWithoutListeners(boolean commit, boolean instantApply, Runnable runnable);
+
+    void invokeWithoutListeners(Runnable runnable);
+
+    /**
      * Runs a task in an {@link ApplyOnlyTx} that will never be committed or saved as uncommitted transaction
      * in this Context. Use cautiously when dealing with changes that would break a regular commit one wy or the other.
-     * Was used before JXP v0.7 to deal with duplicate Elements because {@link XmlPersister} could not find / uniquely
+     * Was used before JXP v0.7 to deal with duplicate Elements because the XmlPersister could not find / uniquely
      * identify the {@link Element} that needed to be changed. But then 0.7 eliminated the need to locate the Element in
      * the first place meaning all obvious use cases for this class vanished. Only use if you know what you are doing.
      *
@@ -314,7 +386,7 @@ public interface Context {
 
     /**
      * Partitionable Context that can be bound to an object of Type E. The Context can then be retrieved from the
-     * ContextManager via the {@link ContextManager#getContext(Object)} method, this checks whether the passed object
+     * ContextManager via the {@link JxpBackend#getBoundContext(Object)} method, this checks whether the passed object
      * equals the BindableContext's boundObject, it does not have to be the same object. Each BindableContext will create
      * a new file based on the base Context (a copy of the path specified in the ContextManager)
      *
@@ -338,10 +410,10 @@ public interface Context {
         String getId();
 
         /**
-         * removes this BindableContext from its ContextManager and deletes its file.
-         * Use {@link ContextManager#destroyBoundContext(Object)}
+         * @return the context this BindableContext is a copy of
          */
-        void destroy();
+        @Nullable
+        Context getCopyOf();
 
     }
 

@@ -3,7 +3,7 @@ package net.robinfriedli.jxp.events;
 import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.persist.DefaultPersistenceManager;
-import net.robinfriedli.jxp.persist.XmlPersister;
+import org.w3c.dom.Document;
 
 public class ElementCreatedEvent extends Event {
 
@@ -36,7 +36,7 @@ public class ElementCreatedEvent extends Event {
                 parent.getSubElements().add(source);
             }
             setApplied(true);
-            getSource().getContext().getManager().fireElementCreating(this);
+            getSource().getContext().getBackend().fireElementCreating(this);
         }
     }
 
@@ -52,15 +52,19 @@ public class ElementCreatedEvent extends Event {
                 source.removeParent();
             }
         }
+
+        if (isCommitted()) {
+            getSource().phantomize();
+        }
     }
 
     @Override
     public void commit(DefaultPersistenceManager persistenceManager) {
-        XmlPersister xmlPersister = persistenceManager.getXmlPersister();
+        Document document = getSource().getContext().getDocument();
         if (!getSource().isSubElement()) {
-            xmlPersister.persistElement(getSource());
+            persistenceManager.persistElement(document, getSource());
         } else {
-            xmlPersister.persistElement(getSource(), getSource().getParent().requireElement());
+            persistenceManager.persistElement(document, getSource(), getSource().getParent().requireElement());
         }
         setCommitted(true);
     }

@@ -1,5 +1,12 @@
 package net.robinfriedli.jxp.persist;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.stream.Collectors;
+
 import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.events.ElementChangingEvent;
@@ -8,12 +15,6 @@ import net.robinfriedli.jxp.events.ElementDeletingEvent;
 import net.robinfriedli.jxp.events.Event;
 import net.robinfriedli.jxp.exceptions.CommitException;
 import net.robinfriedli.jxp.exceptions.PersistException;
-
-import java.util.Arrays;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.Callable;
-import java.util.stream.Collectors;
 
 /**
  * Holds all {@link Event}s that have been created within the current {@link Context#invoke(Callable)} method
@@ -25,10 +26,15 @@ public class Transaction {
     private final Context context;
     private final List<Event> changes;
     private boolean rollback = false;
+    private boolean failed = false;
+    private State state;
+    private final List<QueuedTask> queuedTasks;
 
     public Transaction(Context context, List<Event> changes) {
         this.context = context;
         this.changes = changes;
+        state = State.RUNNING;
+        queuedTasks = Lists.newArrayList();
     }
 
     public Context getContext() {
@@ -36,11 +42,19 @@ public class Transaction {
     }
 
     public void addChange(Event change) {
-        changes.add(change);
+        if (isRecording()) {
+            changes.add(change);
+        } else {
+            throw new IllegalStateException("Transaction is not recording changes");
+        }
     }
 
     public void addChanges(List<Event> changes) {
-        changes.addAll(changes);
+        if (isRecording()) {
+            this.changes.addAll(changes);
+        } else {
+            throw new IllegalStateException("Transaction is not recording changes");
+        }
     }
 
     public void addChanges(Event... changes) {
@@ -84,7 +98,16 @@ public class Transaction {
         return rollback;
     }
 
+    public void queueTask(QueuedTask queuedTask) {
+        queuedTasks.add(queuedTask);
+    }
+
+    public List<QueuedTask> getQueuedTasks() {
+        return queuedTasks;
+    }
+
     public void apply() {
+        setState(State.APPLYING);
         for (Event change : changes) {
             try {
                 change.apply();
@@ -94,11 +117,13 @@ public class Transaction {
             }
         }
 
-        context.getManager().fireTransactionApplied(this);
+        setState(State.APPLIED);
+        context.getBackend().fireTransactionApplied(this);
     }
 
     public void commit(DefaultPersistenceManager manager) throws CommitException {
         if (!isRollback()) {
+            setState(State.COMMITTING);
             try {
                 for (Event change : changes) {
                     if (change.isApplied()) {
@@ -107,22 +132,30 @@ public class Transaction {
                         throw new CommitException("Trying to commit a change that has not been applied.");
                     }
                 }
+
+                if (context.isPersistent()) {
+                    manager.writeToFile(context);
+                }
             } catch (CommitException e) {
                 rollback();
-                manager.reload();
-                context.reloadElements();
-                throw new CommitException("Exception during commit. Transaction rolled back and Context restored.", e);
+                throw new CommitException("Exception during commit. Transaction rolled back.", e);
             }
 
-            context.getManager().fireTransactionCommitted(this);
+            setState(State.COMMITTED);
+            context.getBackend().fireTransactionCommitted(this);
         } else {
             throw new CommitException("Cannot commit transaction that was rolled back");
         }
     }
 
     public void rollback() {
+        setState(State.ROLLING_BACK);
         rollback = true;
+        fail();
+        // reverse list so that the first change added is the last one to get rolled back to restore data step by step correctly
+        Collections.reverse(changes);
         changes.forEach(Event::revert);
+        setState(State.ROLLED_BACK);
     }
 
     public boolean isApplyOnly() {
@@ -147,5 +180,81 @@ public class Transaction {
 
     public static InstantApplyOnlyTx createInstantApplyOnlyTx(Context context) {
         return new InstantApplyOnlyTx(context, Lists.newArrayList());
+    }
+
+    public boolean isRecording() {
+        if (isInstantApply()) {
+            return getState().isUseable();
+        } else {
+            return getState() == State.RUNNING;
+        }
+    }
+
+    public void setState(State state) {
+        this.state = state;
+    }
+
+    public State getState() {
+        return state;
+    }
+
+    public void fail() {
+        failed = true;
+    }
+
+    public boolean failed() {
+        return failed;
+    }
+
+    enum State {
+
+        /**
+         * the Transaction has been created by the {@link Context#invoke(Runnable)} method and is listening for changes
+         */
+        RUNNING(true),
+
+        /**
+         * The Transaction is applying all changes added to it. For {@link InstantApplyOnlyTx} this state will never
+         * occur.
+         */
+        APPLYING(true),
+
+        /**
+         * The changes from this Transaction have been applied to the XmlElements but the Transaction has not been
+         * committed yet. Transaction applied event listeners will be fired after this.
+         */
+        APPLIED(true),
+
+        /**
+         * The Transaction is being committed.
+         */
+        COMMITTING(false),
+
+        /**
+         * This Transaction has been fully committed. Transaction committed event listeners will be fired after this.
+         */
+        COMMITTED(false),
+
+        /**
+         * An exception occurred while applying or committing the Transaction meaning all changes will be reverted.
+         * This also means any queued tasks added by listeners will be cancelled if cancelOnFailure is true.
+         */
+        ROLLING_BACK(false),
+
+        /**
+         * This Transaction has finished rolling back.
+         */
+        ROLLED_BACK(false);
+
+        private final boolean useable;
+
+        State(boolean useable) {
+            this.useable = useable;
+        }
+
+        public boolean isUseable() {
+            return useable;
+        }
+
     }
 }

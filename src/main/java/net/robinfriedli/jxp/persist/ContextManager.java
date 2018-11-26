@@ -12,6 +12,7 @@ import net.robinfriedli.jxp.events.EventListener;
 /**
  * Manager to retrieve {@link Context} and register {@link EventListener}s
  */
+@Deprecated
 public class ContextManager {
 
     private final String path;
@@ -27,9 +28,10 @@ public class ContextManager {
     }
 
     public ContextManager(String path, DefaultPersistenceManager persistenceManager, List<EventListener> listeners) {
-        this.path = path;
+        /*this.path = path;
         this.listeners = listeners;
-        this.context = new ContextImpl(this, persistenceManager, path);
+        this.context = new ContextImpl(this, persistenceManager, path);*/
+        throw new UnsupportedOperationException(getClass().getSimpleName() + " has been replaced by JxpBackend. Use JxpBuilder instead.");
     }
 
     public <E> ContextManager(String path, E bindingObject, String id, DefaultPersistenceManager persistenceManager) {
@@ -41,10 +43,11 @@ public class ContextManager {
                               String id,
                               DefaultPersistenceManager persistenceManager,
                               List<EventListener> listeners) {
-        this.path = path;
+        /*this.path = path;
         this.listeners = listeners;
         this.context = new ContextImpl(this, persistenceManager, path);
-        createBoundContext(bindingObject, id, persistenceManager);
+        createBoundContext(bindingObject, id, persistenceManager);*/
+        throw new UnsupportedOperationException(getClass().getSimpleName() + " has been replaced by JxpBackend. Use JxpBuilder instead.");
     }
 
     public String getPath() {
@@ -56,8 +59,9 @@ public class ContextManager {
     }
 
     public <E> void createBoundContext(E bindingObject, String id, DefaultPersistenceManager persistenceManager) {
-        Context.BindableContext<E> bindableContext = new BindableContextImpl<>(this, bindingObject, id, persistenceManager);
-        boundContexts.add(bindableContext);
+        /*Context.BindableContext<E> bindableContext = new BindableContextImpl<>(this, bindingObject, id, persistenceManager);
+        boundContexts.add(bindableContext);*/
+        throw new UnsupportedOperationException(getClass().getSimpleName() + " has been replaced by JxpBackend.");
     }
 
     public <E> Context getContext(E boundObject) {
@@ -66,7 +70,7 @@ public class ContextManager {
 
     public <E> void destroyBoundContext(E boundObject) {
         Context.BindableContext<E> bindableContext = getBindableContext(boundObject);
-        bindableContext.destroy();
+        bindableContext.deleteFile();
         boundContexts.remove(bindableContext);
     }
 

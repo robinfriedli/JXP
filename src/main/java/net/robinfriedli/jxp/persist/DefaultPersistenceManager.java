@@ -1,6 +1,21 @@
 package net.robinfriedli.jxp.persist;
 
+import java.io.File;
+import java.io.IOException;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.util.List;
+import java.util.Map;
+
+import javax.annotation.Nullable;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
 
 import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.api.BaseXmlElement;
@@ -11,66 +26,57 @@ import net.robinfriedli.jxp.events.ElementChangingEvent;
 import net.robinfriedli.jxp.events.ValueChangingEvent;
 import net.robinfriedli.jxp.exceptions.CommitException;
 import net.robinfriedli.jxp.exceptions.PersistException;
+import org.w3c.dom.Document;
 import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
+import org.xml.sax.SAXParseException;
 
 public class DefaultPersistenceManager {
 
-    private Context context;
-    private XmlPersister xmlPersister;
-
-    public void initialize(Context context) {
-        this.context = context;
-        xmlPersister = new XmlPersister(context);
-    }
-
-    public List<XmlElement> getAllElements() {
+    public List<XmlElement> getAllElements(Context context) {
         List<XmlElement> xmlElements = Lists.newArrayList();
-        List<Element> allTopLevelElements = xmlPersister.getAllTopLevelElements();
+        List<Element> allTopLevelElements = getAllTopLevelElements(context.getDocument());
 
         for (Element topElement : allTopLevelElements) {
-            xmlElements.add(instantiateBaseXmlElement(topElement));
+            xmlElements.add(instantiateXmlElement(topElement, context));
         }
 
         return xmlElements;
     }
 
-    private XmlElement instantiateBaseXmlElement(Element element) {
-        List<Element> subElements = xmlPersister.getChildren(element);
+    public XmlElement instantiateXmlElement(Element element, Context context) {
+        Map<String, Class<? extends XmlElement>> instantiationContributions = context.getBackend().getInstantiationContributions();
+        List<Element> subElements = getChildren(element);
         List<XmlElement> instantiatedSubElems = Lists.newArrayList();
 
         for (Element subElement : subElements) {
-            instantiatedSubElems.add(instantiateBaseXmlElement(subElement));
+            instantiatedSubElems.add(instantiateXmlElement(subElement, context));
         }
 
-        return new BaseXmlElement(element, instantiatedSubElems, context);
-    }
-
-    public void buildTree(List<XmlElement> elements) {
-        for (XmlElement element : elements) {
-            if (element.hasSubElements()) {
-                for (XmlElement subElement : element.getSubElements()) {
-                    setParent(subElement, element);
+        Class<? extends XmlElement> xmlClass = instantiationContributions.get(element.getTagName());
+        if (xmlClass != null) {
+            try {
+                if (subElements.isEmpty()) {
+                    Constructor<? extends XmlElement> constructor = xmlClass.getConstructor(Element.class, Context.class);
+                    return constructor.newInstance(element, context);
+                } else {
+                    Constructor<? extends XmlElement> constructor = xmlClass.getConstructor(Element.class, List.class, Context.class);
+                    return constructor.newInstance(element, instantiatedSubElems, context);
                 }
+            } catch (NoSuchMethodException e) {
+                throw new PersistException("Your class " + xmlClass + " does not have the appropriate Constructor", e);
+            } catch (IllegalAccessException e) {
+                throw new PersistException("Cannot access constructor of class " + xmlClass, e);
+            } catch (InstantiationException e) {
+                throw new PersistException("Cannot instantiate class " + xmlClass, e);
+            } catch (InvocationTargetException e) {
+                throw new PersistException("Exception while invoking constructor of " + xmlClass, e);
             }
+        } else {
+            return new BaseXmlElement(element, instantiatedSubElems, context);
         }
-    }
-
-    private void setParent(XmlElement child, XmlElement parent) {
-        child.setParent(parent);
-
-        if (child.hasSubElements()) {
-            for (XmlElement subElement : child.getSubElements()) {
-                setParent(subElement, child);
-            }
-        }
-    }
-
-    public Context getContext() {
-        return context;
-    }
-
-    public XmlPersister getXmlPersister() {
-        return xmlPersister;
     }
 
     public void commitElementChanges(ElementChangingEvent event) throws CommitException {
@@ -78,20 +84,89 @@ public class DefaultPersistenceManager {
         List<AttributeChangingEvent> attributeChanges = event.getChangedAttributes();
 
         if (attributeChanges != null && !attributeChanges.isEmpty()) {
-            xmlPersister.setAttributes(element, attributeChanges);
-            attributeChanges.forEach(c -> c.setCommitted(true));
+            for (AttributeChangingEvent attributeChange : attributeChanges) {
+                setAttribute(element, attributeChange);
+                attributeChange.setCommitted(true);
+            }
         }
         if (event.textContentChanged()) {
-            xmlPersister.setTextContent(event.getChangedTextContent());
+            setTextContent(event.getChangedTextContent());
         }
     }
 
-    public void write() throws CommitException {
-        xmlPersister.writeToFile();
+    public void setAttribute(XmlElement xmlElement, AttributeChangingEvent change) throws CommitException {
+        Element element = requireElement(xmlElement);
+        element.setAttribute(change.getAttribute().getAttributeName(), change.getNewValue());
     }
 
-    public void reload() {
-        xmlPersister.reloadDocument();
+    public void setTextContent(ValueChangingEvent<String> changedTextContent) throws CommitException {
+        Element element = requireElement(changedTextContent.getSource());
+        element.setTextContent(changedTextContent.getNewValue());
+    }
+
+    public void writeToFile(Context context) throws CommitException {
+        if (!context.isPersistent()) {
+            throw new CommitException("Context is not persistent. Cannot write to file");
+        }
+
+        Document doc = context.getDocument();
+        try {
+            TransformerFactory transformerFactory = TransformerFactory.newInstance();
+            Transformer transformer = transformerFactory.newTransformer();
+            DOMSource source = new DOMSource(doc);
+            StreamResult result = new StreamResult(context.getFile());
+
+            transformer.transform(source, result);
+        } catch (TransformerException e) {
+            throw new CommitException("Exception while writing to file", e);
+        }
+    }
+
+    public Document parseDocument(File xml) {
+        try {
+            DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+            DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+            return dBuilder.parse(xml);
+        } catch (IOException | SAXException | ParserConfigurationException e) {
+            throw new PersistException("Exception while parsing document", e);
+        }
+    }
+
+    public void persistElement(Document document, XmlElement element) {
+        persistElement(document, element, null);
+    }
+
+    public void persistElement(Document doc, XmlElement element, @Nullable Element superElem) {
+        Element elem = doc.createElement(element.getTagName());
+
+        List<XmlAttribute> attributes = element.getAttributes();
+        for (XmlAttribute attribute : attributes) {
+            elem.setAttribute(attribute.getAttributeName(), attribute.getValue());
+        }
+
+        if (element.hasTextContent()) {
+            elem.setTextContent(element.getTextContent());
+        }
+
+        if (superElem != null) {
+            superElem.appendChild(elem);
+        } else {
+            Element rootElem = doc.getDocumentElement();
+            rootElem.appendChild(elem);
+        }
+
+        if (element.hasSubElements()) {
+            for (XmlElement subElement : element.getSubElements()) {
+                persistElement(doc, subElement, elem);
+            }
+        }
+
+        element.setElement(elem);
+        if (!element.hasChanges()) {
+            element.setState(XmlElement.State.CLEAN);
+        } else {
+            element.setState(XmlElement.State.TOUCHED);
+        }
     }
 
     public void castElement(XmlElement target, XmlElement source) {
@@ -141,6 +216,38 @@ public class DefaultPersistenceManager {
             }
         } else {
             throw new PersistException("Could not cast element. Incompatible structures.");
+        }
+    }
+
+    public List<Element> getAllTopLevelElements(Document doc) {
+        Element documentElement = doc.getDocumentElement();
+
+        if (documentElement == null) {
+            throw new PersistException("Invalid document! No root element defined.");
+        }
+
+        return getChildren(documentElement);
+    }
+
+    public List<Element> getChildren(Element parent) {
+        NodeList childNodes = parent.getChildNodes();
+        List<Element> elements = Lists.newArrayList();
+
+        for (int i = 0; i < childNodes.getLength(); i++) {
+            Node node = childNodes.item(i);
+            if (node instanceof Element) {
+                elements.add((Element) node);
+            }
+        }
+
+        return elements;
+    }
+
+    private Element requireElement(XmlElement xmlElement) throws CommitException {
+        try {
+            return xmlElement.requireElement();
+        } catch (IllegalStateException e) {
+            throw new CommitException(e);
         }
     }
 

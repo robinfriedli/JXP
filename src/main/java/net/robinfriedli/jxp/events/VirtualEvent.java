@@ -3,8 +3,10 @@ package net.robinfriedli.jxp.events;
 import java.util.List;
 
 import com.google.common.collect.Lists;
+import net.robinfriedli.jxp.api.JxpBackend;
 import net.robinfriedli.jxp.persist.Context;
 import net.robinfriedli.jxp.persist.DefaultPersistenceManager;
+import net.robinfriedli.jxp.persist.QueuedTask;
 import net.robinfriedli.jxp.persist.Transaction;
 
 /**
@@ -21,7 +23,13 @@ public class VirtualEvent extends Event {
 
     @Override
     public void apply() {
-        event.apply();
+        JxpBackend backend = event.getSource().getContext().getBackend();
+        backend.setListenersMuted(true);
+        try {
+            event.apply();
+        } finally {
+            backend.setListenersMuted(false);
+        }
     }
 
     @Override
@@ -64,6 +72,13 @@ public class VirtualEvent extends Event {
             context.setTransaction(transactionMock);
             runnable.run();
             transaction.getChanges().addAll(virtualEvents);
+
+            if (!transactionMock.getQueuedTasks().isEmpty()) {
+                for (QueuedTask queuedTask : transactionMock.getQueuedTasks()) {
+                    transaction.queueTask(queuedTask);
+                }
+            }
+
             context.setTransaction(transaction);
         }
     }

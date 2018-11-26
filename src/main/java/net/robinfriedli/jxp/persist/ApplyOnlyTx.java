@@ -7,7 +7,7 @@ import org.w3c.dom.Element;
 
 /**
  * Type of transaction used by the Context#apply method. Use cautiously when dealing with changes that would break a
- * regular commit one way or the other. Was used before JXP v0.7 to deal with duplicate Elements because {@link XmlPersister}
+ * regular commit one way or the other. Was used before JXP v0.7 to deal with duplicate Elements because the XmlPersister
  * could not find / uniquely identify the {@link Element} that needed to be changed. But then 0.7 eliminated the need to
  * locate the Element in the first place meaning all obvious use cases for this class vanished. Only use if you know
  * what you are doing.
