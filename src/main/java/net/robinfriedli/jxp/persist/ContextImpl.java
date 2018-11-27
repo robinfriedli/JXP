@@ -39,18 +39,23 @@ public class ContextImpl implements Context {
 
     private Object envVar;
 
-    public ContextImpl(JxpBackend backend, DefaultPersistenceManager persistenceManager, String path) {
+    public ContextImpl(JxpBackend backend, DefaultPersistenceManager persistenceManager, Document document) {
         this.backend = backend;
-        this.path = path;
-        this.file = new File(path);
-        document = persistenceManager.parseDocument(file);
+        this.document = document;
         this.persistenceManager = persistenceManager;
         this.elements = persistenceManager.getAllElements(this);
     }
 
-    public ContextImpl(JxpBackend backend, DefaultPersistenceManager persistenceManager, Document document) {
+    public ContextImpl(JxpBackend backend, DefaultPersistenceManager persistenceManager, File file) {
         this.backend = backend;
-        this.document = document;
+        this.path = file.getPath();
+        this.file = file;
+
+        if (!file.exists()) {
+            throw new PersistException("File " + file + " does not exist");
+        }
+
+        document = persistenceManager.parseDocument(file);
         this.persistenceManager = persistenceManager;
         this.elements = persistenceManager.getAllElements(this);
     }
@@ -113,6 +118,34 @@ public class ContextImpl implements Context {
         } catch (IOException | CommitException e) {
             throw new PersistException("Exception persisting Context to file " + path, e);
         }
+    }
+
+    @Override
+    public Context copy(String targetPath) {
+        if (!isPersistent()) {
+            throw new UnsupportedOperationException("Can only copy persistent Context");
+        }
+
+        Document document = persistenceManager.parseDocument(file);
+        Context context = new ContextImpl(backend, persistenceManager, document);
+        backend.addContext(context);
+        context.persist(targetPath);
+
+        return context;
+    }
+
+    @Override
+    public <E> BindableContext<E> copy(String targetPath, E objectToBind) {
+        if (!isPersistent()) {
+            throw new UnsupportedOperationException("Can only copy persistent Context");
+        }
+
+        Document document = persistenceManager.parseDocument(file);
+        BindableContext<E> context = new BindableContextImpl<>(backend, persistenceManager, document, objectToBind);
+        backend.addBoundContext(context);
+        context.persist(targetPath);
+
+        return context;
     }
 
     @Override

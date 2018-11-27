@@ -1,5 +1,7 @@
 package net.robinfriedli.jxp.api;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -12,6 +14,7 @@ import net.robinfriedli.jxp.events.ElementChangingEvent;
 import net.robinfriedli.jxp.events.ElementCreatedEvent;
 import net.robinfriedli.jxp.events.ElementDeletingEvent;
 import net.robinfriedli.jxp.events.EventListener;
+import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.persist.BindableContextImpl;
 import net.robinfriedli.jxp.persist.Context;
 import net.robinfriedli.jxp.persist.ContextImpl;
@@ -51,15 +54,7 @@ public class JxpBackend {
     }
 
     public Context getContext(String path) {
-        Context existingContext = getExistingContext(path);
-
-        if (existingContext != null) {
-            return existingContext;
-        } else {
-            Context context = new ContextImpl(this, persistenceManager, path);
-            contexts.add(context);
-            return context;
-        }
+        return getContext(new File(path));
     }
 
     public Context getContext(Document document) {
@@ -74,37 +69,21 @@ public class JxpBackend {
         }
     }
 
+    public Context getContext(File file) {
+        Context existingContext = getExistingContext(file);
+
+        if (existingContext != null) {
+            return existingContext;
+        } else {
+            Context context = new ContextImpl(this, persistenceManager, file);
+            contexts.add(context);
+            return context;
+        }
+    }
+
     @Nullable
     public Context getExistingContext(String path) {
-        List<Context> found = contexts.stream().filter(c -> c.getPath().equals(path)).collect(Collectors.toList());
-
-        if (found.size() == 1) {
-            return found.get(0);
-        } else if (found.size() > 1) {
-            throw new IllegalStateException("More than one Context for path " + path);
-        }
-
-        return null;
-    }
-
-    public Context requireExistingContext(String path) {
-        Context context = getExistingContext(path);
-
-        if (context != null) {
-            return context;
-        } else {
-            throw new IllegalStateException("No Context for path " + path);
-        }
-    }
-
-    public Context requireExistingContext(Document document) {
-        Context context = getExistingContext(document);
-
-        if (context != null) {
-            return context;
-        } else {
-            throw new IllegalStateException("No Context for document " + document);
-        }
+        return getExistingContext(new File(path));
     }
 
     @Nullable
@@ -120,12 +99,68 @@ public class JxpBackend {
         return null;
     }
 
+    @Nullable
+    public Context getExistingContext(File file) {
+        List<Context> found = contexts
+            .stream()
+            .filter(c -> {
+                try {
+                    return c.getFile() != null && c.getFile().getCanonicalPath().equals(file.getCanonicalPath());
+                } catch (IOException e) {
+                    throw new PersistException(e);
+                }
+            })
+            .collect(Collectors.toList());
+
+        if (found.size() == 1) {
+            return found.get(0);
+        } else if (found.size() > 1) {
+            throw new IllegalStateException("More than one Context for file " + file);
+        }
+
+        return null;
+    }
+
+    public Context requireExistingContext(String path) {
+        return requireExistingContext(new File(path));
+    }
+
+    public Context requireExistingContext(Document document) {
+        Context context = getExistingContext(document);
+
+        if (context != null) {
+            return context;
+        } else {
+            throw new IllegalStateException("No Context for document " + document);
+        }
+    }
+
+    public Context requireExistingContext(File file) {
+        Context context = getExistingContext(file);
+
+        if (context != null) {
+            return context;
+        } else {
+            throw new IllegalStateException("No Context for file " + file);
+        }
+    }
+
     public boolean hasContext(String path) {
-        return contexts.stream().anyMatch(c -> c.getPath().equals(path));
+        return hasContext(new File(path));
     }
 
     public boolean hasContext(Document document) {
         return contexts.stream().anyMatch(c -> c.getDocument().equals(document));
+    }
+
+    public boolean hasContext(File file) {
+        return contexts.stream().anyMatch(c -> {
+            try {
+                return c.getFile() != null && c.getFile().getCanonicalPath().equals(file.getCanonicalPath());
+            } catch (IOException e) {
+                throw new PersistException(e);
+            }
+        });
     }
 
     public boolean hasBoundContext(Object boundObject) {
@@ -161,16 +196,52 @@ public class JxpBackend {
         return null;
     }
 
-    public <E> Context.BindableContext<E> createBoundContext(E objectToBind, Context copyOf, String id) {
-        Context.BindableContext<E> context = new BindableContextImpl<>(copyOf, objectToBind, id);
+    public <E> Context.BindableContext<E> createBoundContext(String path, E objectToBind) {
+        return createBoundContext(new File(path), objectToBind);
+    }
+
+    public <E> Context.BindableContext<E> createBoundContext(Document document, E objectToBind) {
+        if (hasContext(document)) {
+            throw new PersistException("Document " + document + " is already used by a Context");
+        }
+
+        Context.BindableContext<E> context = new BindableContextImpl<>(this, persistenceManager, document, objectToBind);
         boundContexts.add(context);
         return context;
     }
 
-    public <E> Context.BindableContext<E> createBoundContext(String path, E objectToBind) {
-        BindableContextImpl<E> bindableContext = new BindableContextImpl<>(this, persistenceManager, path, objectToBind);
-        boundContexts.add(bindableContext);
-        return bindableContext;
+    public <E> Context.BindableContext<E> createBoundContext(File file, E objectToBind) {
+        if (hasContext(file)) {
+            throw new PersistException("File " + file + " is already used by a Context");
+        }
+
+        Context.BindableContext<E> context = new BindableContextImpl<>(this, persistenceManager, file, objectToBind);
+        boundContexts.add(context);
+        return context;
+    }
+
+    public void addContext(Context context) {
+        if (context.isPersistent() && hasContext(context.getFile())) {
+            throw new PersistException("There already is a Context for file " + context.getFile());
+        } else if (hasContext(context.getDocument())) {
+            throw new PersistException("There already is a Context for document " + context.getDocument());
+        }
+
+        contexts.add(context);
+    }
+
+    public void addBoundContext(Context.BindableContext context) {
+        if (hasBoundContext(context.getBindingObject())) {
+            throw new PersistException("There already is a Context bound to object equal to " + context.getBindingObject());
+        }
+
+        if (context.isPersistent() && hasContext(context.getFile())) {
+            throw new PersistException("There already is a Context for file " + context.getFile());
+        } else if (hasContext(context.getDocument())) {
+            throw new PersistException("There already is a Context for document " + context.getDocument());
+        }
+
+        boundContexts.add(context);
     }
 
     public void removeContext(String path) {

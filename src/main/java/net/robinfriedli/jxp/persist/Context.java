@@ -55,6 +55,23 @@ public interface Context {
     void persist(String path);
 
     /**
+     * Copies the file of this Context to create a new one. Context must be persistent.
+     *
+     * @param targetPath the path to copy the file
+     * @return the newly create Context
+     */
+    Context copy(String targetPath);
+
+    /**
+     * Copies the file of this Context to create a new BoundContext. Context must be persistent.
+     *
+     * @param targetPath the path to copy the file to
+     * @param objectToBind the object to bind the new Context to
+     * @return the newly created BindableContext
+     */
+    <E> BindableContext<E> copy(String targetPath, E objectToBind);
+
+    /**
      * @return the {@link DefaultPersistenceManager} for this Context
      */
     DefaultPersistenceManager getPersistenceManager();
@@ -400,20 +417,6 @@ public interface Context {
          * @return object of Type E
          */
         E getBindingObject();
-
-        /**
-         * The BindableContext should have an id the Context can consistently be identified with so that its XML file
-         * can be loaded. Ideally the Object the BindableContext is bound to should have some sort of id.
-         *
-         * @return id of BindableContext, used as part of filename
-         */
-        String getId();
-
-        /**
-         * @return the context this BindableContext is a copy of
-         */
-        @Nullable
-        Context getCopyOf();
 
     }
 

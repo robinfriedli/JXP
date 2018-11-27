@@ -207,32 +207,6 @@ public class XmlPersister {
         File file = new File(path);
         if (file.exists()) {
             return file;
-        } else if (context instanceof Context.BindableContext) {
-            Context copyOf = ((Context.BindableContext) context).getCopyOf();
-            if (copyOf != null) {
-                File fileToCopy = new File(copyOf.getPath());
-                if (fileToCopy.exists()) {
-                    try {
-                        file.createNewFile();
-
-                        FileChannel src = new FileInputStream(fileToCopy).getChannel();
-                        FileChannel dest = new FileOutputStream(file).getChannel();
-                        dest.transferFrom(src, 0, src.size());
-                        src.close();
-                        dest.close();
-
-                        return file;
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                } else {
-                    throw new IllegalStateException("No file found for path defined in base Context. Copying to new file for BindableContext failed");
-                }
-            } else {
-                throw new IllegalStateException("BindableContext is not a copy and its defined file does not exist");
-            }
-        } else {
-            throw new IllegalStateException("Context is not bindable and no file has been found for specified path");
         }
 
         throw new CommitException("File loading failed");
