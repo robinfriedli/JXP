@@ -180,7 +180,7 @@ Example:
 
 Async example:
 ```java
-    QueuedTask<Object> future = context.futureInvoke(() -> {
+    QueuedTask<Void> future = context.futureInvoke(() -> {
         City london = new City("London", 8900000, context);
         context.requireElement("England").addSubElement(london);
         return null;
