@@ -1,6 +1,9 @@
 package net.robinfriedli.jxp.api;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -51,20 +54,20 @@ public abstract class AbstractXmlElement implements XmlElement {
 
     // creating new element
 
-    public AbstractXmlElement(String tagName, Map<String, String> attributeMap, Context context) {
+    public AbstractXmlElement(String tagName, Map<String, ?> attributeMap, Context context) {
         this(tagName, attributeMap, Lists.newArrayList(), "", context);
     }
 
-    public AbstractXmlElement(String tagName, Map<String, String> attributeMap, String textContent, Context context) {
+    public AbstractXmlElement(String tagName, Map<String, ?> attributeMap, String textContent, Context context) {
         this(tagName, attributeMap, Lists.newArrayList(), textContent, context);
     }
 
-    public AbstractXmlElement(String tagName, Map<String, String> attributeMap, List<XmlElement> subElements, Context context) {
+    public AbstractXmlElement(String tagName, Map<String, ?> attributeMap, List<XmlElement> subElements, Context context) {
         this(tagName, attributeMap, subElements, "", context);
     }
 
     public AbstractXmlElement(String tagName,
-                              Map<String, String> attributeMap,
+                              Map<String, ?> attributeMap,
                               List<XmlElement> subElements,
                               String textContent,
                               Context context) {
@@ -76,7 +79,9 @@ public abstract class AbstractXmlElement implements XmlElement {
 
         List<XmlAttribute> attributes = Lists.newArrayList();
         for (String attributeName : attributeMap.keySet()) {
-            attributes.add(new XmlAttribute(this, attributeName, attributeMap.get(attributeName)));
+            Object attributeValue = attributeMap.get(attributeName);
+            String stringValue = attributeValue instanceof String ? (String) attributeValue : StringConverter.reverse(attributeMap);
+            attributes.add(new XmlAttribute(this, attributeName, stringValue));
         }
         this.attributes = attributes;
 
@@ -116,6 +121,41 @@ public abstract class AbstractXmlElement implements XmlElement {
         Transaction transaction = context.getActiveTransaction();
 
         transaction.addChange(new ElementCreatedEvent(this));
+    }
+
+    @Override
+    public XmlElement copy(boolean copySubElements, boolean instantiateContributedClass) {
+        List<XmlElement> subElements = Lists.newArrayList();
+        Map<String, String> attributeMap = new HashMap<>();
+
+        if (copySubElements && hasSubElements()) {
+            for (XmlElement subElement : this.subElements) {
+                subElements.add(subElement.copy(true, instantiateContributedClass));
+            }
+        }
+
+        for (XmlAttribute attribute : attributes) {
+            attributeMap.put(attribute.getAttributeName(), attribute.getValue());
+        }
+
+        if (instantiateContributedClass) {
+            Map<String, Class<? extends XmlElement>> instantiationContributions = context.getBackend().getInstantiationContributions();
+            Class<? extends XmlElement> classToInstantiate = instantiationContributions.get(tagName);
+
+            if (classToInstantiate != null) {
+                try {
+                    Constructor<? extends XmlElement> constructor =
+                        classToInstantiate.getConstructor(String.class, Map.class, List.class, String.class, Context.class);
+                    return constructor.newInstance(tagName, attributeMap, subElements, String.valueOf(textContent), context);
+                } catch (NoSuchMethodException e) {
+                    // do nothing, just return a BaseXmlElement instead
+                } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
+                    throw new PersistException("Could not copy " + toString() + ". Failed invoking constructor." , e);
+                }
+            }
+        }
+
+        return new BaseXmlElement(tagName, attributeMap, subElements, String.valueOf(textContent), context);
     }
 
     @Override
@@ -220,8 +260,15 @@ public abstract class AbstractXmlElement implements XmlElement {
     }
 
     @Override
-    public void setAttribute(String attribute, String value) {
-        XmlAttribute attributeToChange = getAttribute(attribute);
+    public void setAttribute(String attribute, Object value) {
+        XmlAttribute attributeToChange;
+        if (hasAttribute(attribute)) {
+            attributeToChange = getAttribute(attribute);
+        } else {
+            XmlAttribute newAttribute = new XmlAttribute(this, attribute);
+            attributes.add(newAttribute);
+            attributeToChange = newAttribute;
+        }
         attributeToChange.setValue(value);
     }
 
@@ -369,7 +416,6 @@ public abstract class AbstractXmlElement implements XmlElement {
             Transaction transaction = context.getActiveTransaction();
 
             State oldState = state;
-            state = State.DELETION;
             ElementDeletingEvent deletingEvent = new ElementDeletingEvent(this, oldState);
             if (hasSubElements()) {
                 RecursiveDeletingEvent.createRecursive(this, deletingEvent);

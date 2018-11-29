@@ -15,14 +15,17 @@ import org.w3c.dom.Element;
  */
 public class BaseXmlElement extends AbstractXmlElement {
 
-    public BaseXmlElement(String tagName, Map<String, String> attributeMap, List<XmlElement> subElements, String textContent, Context context) {
+    // constructor to instantiate new XmlElements with
+    public BaseXmlElement(String tagName, Map<String, ?> attributeMap, List<XmlElement> subElements, String textContent, Context context) {
         super(tagName, attributeMap, subElements, textContent, context);
     }
 
+    // invoked when reading from file
     public BaseXmlElement(Element element, Context context) {
         super(element, context);
     }
 
+    // invoked when reading from file
     public BaseXmlElement(Element element, List<XmlElement> subElements, Context context) {
         super(element, subElements, context);
     }

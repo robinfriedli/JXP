@@ -1,5 +1,6 @@
 package net.robinfriedli.jxp.api;
 
+import java.io.File;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -19,7 +20,7 @@ public class JxpBuilder {
     private List<EventListener> listeners = Lists.newArrayList();
     private Map<String, Class<? extends XmlElement>> instantiationContributions = new HashMap<>();
     private Map<String, Object> objectsToBindContext = new HashMap<>();
-    private Set<String> contextPaths = Sets.newHashSet();
+    private Set<File> contextFiles = Sets.newHashSet();
     private Set<Document> contextDocuments = Sets.newHashSet();
 
     public JxpBuilder setPersistenceManager(DefaultPersistenceManager persistenceManager) {
@@ -48,7 +49,12 @@ public class JxpBuilder {
     }
 
     public JxpBuilder createContext(String xmlPath) {
-        contextPaths.add(xmlPath);
+        contextFiles.add(new File(xmlPath));
+        return this;
+    }
+
+    public JxpBuilder createContext(File file) {
+        contextFiles.add(file);
         return this;
     }
 
@@ -63,7 +69,7 @@ public class JxpBuilder {
         }
 
         JxpBackend jxpBackend = new JxpBackend(persistenceManager, listeners, instantiationContributions);
-        contextPaths.forEach(jxpBackend::getContext);
+        contextFiles.forEach(jxpBackend::getContext);
         contextDocuments.forEach(jxpBackend::getContext);
 
         return jxpBackend;

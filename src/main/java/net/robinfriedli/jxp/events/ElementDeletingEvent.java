@@ -19,6 +19,7 @@ public class ElementDeletingEvent extends Event {
     public ElementDeletingEvent(XmlElement element, XmlElement.State oldState) {
         super(element);
         this.oldState = oldState;
+        element.setState(XmlElement.State.DELETION);
         recursiveDeletingEvents = Lists.newArrayList();
     }
 

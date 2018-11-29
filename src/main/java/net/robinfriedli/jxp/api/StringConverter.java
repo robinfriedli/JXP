@@ -1,41 +1,61 @@
 package net.robinfriedli.jxp.api;
 
 import java.math.BigDecimal;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
+
+import com.google.common.collect.Lists;
 
 public class StringConverter {
 
-    private static final Map<Class, Function<String, ?>> stringConversion = new HashMap<>();
+    private static final List<StringConversionContribution<?>> stringConversions = Lists.newArrayList();
 
     static {
-        stringConversion.put(Integer.class, Integer::parseInt);
-        stringConversion.put(Double.class, Double::valueOf);
-        stringConversion.put(Float.class, Float::parseFloat);
-        stringConversion.put(Long.class, Long::parseLong);
-        stringConversion.put(Boolean.class, Boolean::parseBoolean);
-        stringConversion.put(BigDecimal.class, BigDecimal::new);
-        stringConversion.put(String.class, String::toString);
+        stringConversions.add(new StringConversionContribution<>(Integer.class, Integer::parseInt, Object::toString));
+        stringConversions.add(new StringConversionContribution<>(Double.class, Double::new, Object::toString));
+        stringConversions.add(new StringConversionContribution<>(Float.class, Float::new, Object::toString));
+        stringConversions.add(new StringConversionContribution<>(Long.class, Long::new, Object::toString));
+        stringConversions.add(new StringConversionContribution<>(Boolean.class, Boolean::new, Object::toString));
+        stringConversions.add(new StringConversionContribution<>(BigDecimal.class, BigDecimal::new, BigDecimal::toString));
+        stringConversions.add(new StringConversionContribution<>(String.class, String::toString, String::toString));
     }
 
+
+    public static <V> V convert(String s, Class<V> target) {
+        StringConversionContribution<V> converter = getConverter(target);
+        return converter.convert(s);
+    }
 
     @SuppressWarnings("unchecked")
-    public static <V> V convert(String s, Class<V> target) {
-        Function<String, ?> stringConverter = stringConversion.get(target);
-        if (stringConverter != null) {
-            return (V) stringConverter.apply(s);
-        }
-
-        throw new IllegalArgumentException("No conversion available for class " + target.getSimpleName());
+    public static <V> String reverse(V objectToReverse) {
+        StringConversionContribution<V> converter = (StringConversionContribution<V>) getConverter(objectToReverse.getClass());
+        return converter.reverse(objectToReverse);
     }
 
-    public static <V> void map(Class<V> targetClass, Function<String, V> conversionFunc) {
-        stringConversion.put(targetClass, conversionFunc);
+    public static <V> void map(Class<V> targetClass, Function<String, V> conversionFunc, Function<V, String> reverseFunc) {
+        if (!canConvert(targetClass)) {
+            stringConversions.add(new StringConversionContribution<>(targetClass, conversionFunc, reverseFunc));
+        }
     }
 
     public static boolean canConvert(Class target) {
-        return stringConversion.get(target) != null;
+        return stringConversions.stream().anyMatch(c -> c.getClassToConvert().equals(target));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <V> StringConversionContribution<V> getConverter(Class<V> classToConvert) {
+        Optional<StringConversionContribution<?>> stringConverter = stringConversions
+            .stream()
+            .filter(c -> c.getClassToConvert().equals(classToConvert))
+            .findFirst();
+
+        if (stringConverter.isPresent()) {
+            return (StringConversionContribution<V>) stringConverter.get();
+        } else {
+            throw new IllegalStateException("No conversion available for class " + classToConvert.getSimpleName()
+                + ". Add with StringConverter#map");
+        }
     }
 
 }

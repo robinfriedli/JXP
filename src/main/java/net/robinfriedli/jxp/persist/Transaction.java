@@ -94,6 +94,10 @@ public class Transaction {
             .collect(Collectors.toList());
     }
 
+    public List<XmlElement> getAffectedElements() {
+        return changes.stream().map(Event::getSource).collect(Collectors.toList());
+    }
+
     public boolean isRollback() {
         return rollback;
     }

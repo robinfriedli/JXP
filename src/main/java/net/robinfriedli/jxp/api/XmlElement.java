@@ -23,6 +23,18 @@ public interface XmlElement {
     void persist();
 
     /**
+     * Creates a new XmlElement with the attributes and text content of this one. This does not require a transaction as
+     * it does not persist the copy
+     *
+     * @param copySubElements also copies all subelements of this element
+     * @param instantiateContributedClass tries to instantiate one of your classes contributed to the {@link JxpBackend}
+     * if none found or false returns a {@link BaseXmlElement}. Mind that your class has to have a constructor matching
+     * {@link BaseXmlElement} to be instantiated by this method.
+     * @return the newly created XmlElement
+     */
+    XmlElement copy(boolean copySubElements, boolean instantiateContributedClass);
+
+    /**
      * Removes the {@link Element} represented by this XmlElement from the XML document. Phantoms can be persisted again
      * by using the {@link #persist()} method, or, for subElements, by adding it to a new parent using {@link #addSubElement(XmlElement)}
      * after removing it from the old one
@@ -95,12 +107,12 @@ public interface XmlElement {
     XmlAttribute getAttribute(String attributeName);
 
     /**
-     * Set existing attribute to a different value
+     * Set existing attribute to a different value or create a new one.
      *
      * @param attribute XML attribute name to change
      * @param value new value
      */
-    void setAttribute(String attribute, String value);
+    void setAttribute(String attribute, Object value);
 
     /**
      * @param attributeName name of attribute to check

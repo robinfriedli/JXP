@@ -29,8 +29,9 @@ public class XmlAttribute {
         return this.attributeName;
     }
 
-    public void setValue(String value) {
-        parentElement.addChange(ElementChangingEvent.attributeChange(new AttributeChangingEvent(this, value)));
+    public void setValue(Object value) {
+        String stringValue = value instanceof String ? (String) value : StringConverter.reverse(value);
+        parentElement.addChange(ElementChangingEvent.attributeChange(new AttributeChangingEvent(this, stringValue)));
     }
 
     public String getValue() {
