@@ -178,6 +178,21 @@ Example:
     });
 ```
 
+Async example:
+```java
+    QueuedTask<Object> future = context.futureInvoke(() -> {
+        City london = new City("London", 8900000, context);
+        context.requireElement("England").addSubElement(london);
+        return null;
+    });
+    new Thread(future).start();
+    long count1 = Query.evaluate(attribute("name").is("London")).count(context.getElementsRecursive());
+    System.out.println("Count " + count1 + ", expected: 0");
+    future.get();
+    long count2 = Query.evaluate(attribute("name").is("London")).count(context.getElementsRecursive());
+    System.out.println("Count " + count2 + ", expected: 1");
+
+```
 ## Queries
 
 The Conditions class offers many static methods to build predicates to find XmlElements with. Use Context#query
