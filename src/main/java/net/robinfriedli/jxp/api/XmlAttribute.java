@@ -15,10 +15,10 @@ public class XmlAttribute {
         this.value = "";
     }
 
-    public XmlAttribute(XmlElement parentElement, String attributeName, String value) {
+    public XmlAttribute(XmlElement parentElement, String attributeName, Object value) {
         this.parentElement = parentElement;
         this.attributeName = attributeName;
-        this.value = value;
+        this.value = value instanceof String ? (String) value : StringConverter.reverse(value);
     }
 
     public XmlElement getParentElement() {

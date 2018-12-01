@@ -79,9 +79,7 @@ public abstract class AbstractXmlElement implements XmlElement {
 
         List<XmlAttribute> attributes = Lists.newArrayList();
         for (String attributeName : attributeMap.keySet()) {
-            Object attributeValue = attributeMap.get(attributeName);
-            String stringValue = attributeValue instanceof String ? (String) attributeValue : StringConverter.reverse(attributeValue);
-            attributes.add(new XmlAttribute(this, attributeName, stringValue));
+            attributes.add(new XmlAttribute(this, attributeName, attributeMap.get(attributeName)));
         }
         this.attributes = attributes;
 
