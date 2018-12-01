@@ -83,10 +83,10 @@ Example:
             return getAttribute("name").getValue();
         }
 
-        private static Map<String, String> buildAttributes(String name, int population) {
-            Map<String, String> attributes = new HashMap<>();
+        private static Map<String, ?> buildAttributes(String name, int population) {
+            Map<String, Object> attributes = new HashMap<>();
             attributes.put("name", name);
-            attributes.put("population", String.valueOf(population));
+            attributes.put("population", population);
             return attributes;
         }
     }
@@ -120,11 +120,11 @@ Example:
             return getAttribute("englishName").getValue();
         }
 
-        public static Map<String, String> buildAttributes(String name, String englishName, boolean sovereign) {
-            Map<String, String> attributes = new HashMap<>();
+        public static Map<String, ?> buildAttributes(String name, String englishName, boolean sovereign) {
+            Map<String, Object> attributes = new HashMap<>();
             attributes.put("name", name);
             attributes.put("englishName", englishName);
-            attributes.put("sovereign", Boolean.toString(sovereign));
+            attributes.put("sovereign", sovereign);
             return attributes;
         }
     }
