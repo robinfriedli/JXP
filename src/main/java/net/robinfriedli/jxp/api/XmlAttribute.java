@@ -54,6 +54,10 @@ public class XmlAttribute {
         return StringConverter.convert(value, Float.class);
     }
 
+    public long getLong() {
+        return StringConverter.convert(value, Long.class);
+    }
+
     public void applyChange(AttributeChangingEvent change) throws UnsupportedOperationException {
         applyChange(change, false);
     }

@@ -254,6 +254,11 @@ public class JxpBackend {
         contexts.remove(context);
     }
 
+    public void removeContext(File file) {
+        Context context = requireExistingContext(file);
+        contexts.remove(context);
+    }
+
     public <E> void removeBoundContext(E boundObject) {
         Context.BindableContext<E> context = requireBoundContext(boundObject);
         boundContexts.remove(context);
