@@ -61,6 +61,11 @@ public class ContextImpl implements Context {
     }
 
     @Override
+    public void close() {
+        backend.removeContext(this);
+    }
+
+    @Override
     public JxpBackend getBackend() {
         return backend;
     }
@@ -171,7 +176,7 @@ public class ContextImpl implements Context {
     @Override
     public List<XmlElement> getElementsRecursive() {
         List<XmlElement> elements = Lists.newArrayList();
-        for (XmlElement element : this.elements) {
+        for (XmlElement element : Lists.newArrayList(getElements())) {
             recursiveAdd(elements, element);
         }
         return elements;
@@ -180,7 +185,7 @@ public class ContextImpl implements Context {
     private void recursiveAdd(List<XmlElement> elements, XmlElement element) {
         elements.add(element);
         if (element.hasSubElements()) {
-            for (XmlElement subElement : element.getSubElements()) {
+            for (XmlElement subElement : Lists.newArrayList(element.getSubElements())) {
                 recursiveAdd(elements, subElement);
             }
         }
@@ -316,7 +321,7 @@ public class ContextImpl implements Context {
     }
 
     @Override
-    public <E> E invoke(boolean commit, boolean instantApply, Callable<E> task) {
+    public synchronized <E> E invoke(boolean commit, boolean instantApply, Callable<E> task) {
         boolean nested = false;
         if (transaction != null) {
             if (transaction.isRecording()) {

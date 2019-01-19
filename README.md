@@ -11,7 +11,7 @@ Java XML Persistence API
     <dependency>
       <groupId>net.robinfriedli.JXP</groupId>
       <artifactId>JXP</artifactId>
-      <version>0.9</version>
+      <version>1.0</version>
     </dependency>
 ```
 

@@ -19,7 +19,7 @@ import org.w3c.dom.Element;
  * instances. The {@link #invoke(boolean, boolean, Callable)} methods is mandatory for any action that creates, changes
  * or deletes an XmlElement.
  */
-public interface Context {
+public interface Context extends AutoCloseable {
 
     /**
      * @return the {@link JxpBackend} instance that created this Context

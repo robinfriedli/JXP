@@ -53,6 +53,14 @@ public class JxpBackend {
         this.instantiationContributions = instantiationContributions;
     }
 
+    public List<Context> getContexts() {
+        return contexts;
+    }
+
+    public List<Context.BindableContext> getBoundContexts() {
+        return boundContexts;
+    }
+
     public Context getContext(String path) {
         return getContext(new File(path));
     }
@@ -257,6 +265,14 @@ public class JxpBackend {
     public void removeContext(File file) {
         Context context = requireExistingContext(file);
         contexts.remove(context);
+    }
+
+    public void removeContext(Context context) {
+        if (context instanceof Context.BindableContext) {
+            boundContexts.remove(context);
+        } else {
+            contexts.remove(context);
+        }
     }
 
     public <E> void removeBoundContext(E boundObject) {
