@@ -29,13 +29,13 @@ public class XmlAttribute {
         return this.attributeName;
     }
 
+    public String getValue() {
+        return this.value;
+    }
+
     public void setValue(Object value) {
         String stringValue = value instanceof String ? (String) value : StringConverter.reverse(value);
         parentElement.addChange(ElementChangingEvent.attributeChange(new AttributeChangingEvent(this, stringValue)));
-    }
-
-    public String getValue() {
-        return this.value;
     }
 
     public <V> V getValue(Class<V> target) {

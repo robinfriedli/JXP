@@ -1,9 +1,20 @@
 package net.robinfriedli.jxp.events;
 
 
+import net.robinfriedli.jxp.persist.SequentialTx;
 import net.robinfriedli.jxp.persist.Transaction;
 
 public abstract class EventListener {
+
+    private final boolean mayInterrupt;
+
+    protected EventListener() {
+        this(false);
+    }
+
+    protected EventListener(boolean mayInterrupt) {
+        this.mayInterrupt = mayInterrupt;
+    }
 
     /**
      * Fired when an {@link ElementCreatedEvent} was applied
@@ -30,7 +41,7 @@ public abstract class EventListener {
     }
 
     /**
-     * Fired after a {@link net.robinfriedli.jxp.persist.Transaction} has been applied (to the in memory elements)
+     * Fired after a {@link Transaction} has been applied (to the in memory elements)
      *
      * @param transaction the transaction that has been applied
      */
@@ -38,11 +49,28 @@ public abstract class EventListener {
     }
 
     /**
-     * Fired after a {@link net.robinfriedli.jxp.persist.Transaction} has been committed (to the XML file)
+     * Fired after a {@link Transaction} has been committed (to the XML file). Note that this happens after the flush, so
+     * you can't access the changes committed by this transaction anymore. If you need to access these changes see
+     * {@link #onBeforeFlush(Transaction)}
      *
      * @param transaction the transaction that has been committed
      */
     public void transactionCommitted(Transaction transaction) {
     }
 
+    /**
+     * Fired before a {@link Transaction} is flushed. Usually happens during a commit or during a {@link SequentialTx}.
+     *
+     * @param transaction the transaction that has been flushed
+     */
+    public void onBeforeFlush(Transaction transaction) {
+    }
+
+    /**
+     * the mayInterrupt parameter defines if an exception thrown by this listener should interrupt the transaction or
+     * be ignored
+     */
+    public boolean mayInterrupt() {
+        return mayInterrupt;
+    }
 }

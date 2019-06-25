@@ -5,7 +5,6 @@ import java.util.List;
 import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.api.JxpBackend;
 import net.robinfriedli.jxp.persist.Context;
-import net.robinfriedli.jxp.persist.DefaultPersistenceManager;
 import net.robinfriedli.jxp.persist.QueuedTask;
 import net.robinfriedli.jxp.persist.Transaction;
 
@@ -19,36 +18,6 @@ public class VirtualEvent extends Event {
     public VirtualEvent(Event event) {
         super(event.getSource());
         this.event = event;
-    }
-
-    @Override
-    public void apply() {
-        JxpBackend backend = event.getSource().getContext().getBackend();
-        backend.setListenersMuted(true);
-        try {
-            event.apply();
-        } finally {
-            backend.setListenersMuted(false);
-        }
-    }
-
-    @Override
-    public void revert() {
-        event.revert();
-    }
-
-    @Override
-    public void commit(DefaultPersistenceManager persistenceManager) {
-    }
-
-    @Override
-    public boolean isApplied() {
-        return event.isApplied();
-    }
-
-    @Override
-    public boolean isCommitted() {
-        return event.isCommitted();
     }
 
     public static VirtualEvent wrap(Event event) {
@@ -83,13 +52,43 @@ public class VirtualEvent extends Event {
         }
     }
 
+    @Override
+    public void apply() {
+        JxpBackend backend = event.getSource().getContext().getBackend();
+        backend.setListenersMuted(true);
+        try {
+            event.apply();
+        } finally {
+            backend.setListenersMuted(false);
+        }
+    }
+
+    @Override
+    public void revert() {
+        event.revert();
+    }
+
+    @Override
+    public void commit() {
+    }
+
+    @Override
+    public boolean isApplied() {
+        return event.isApplied();
+    }
+
+    @Override
+    public boolean isCommitted() {
+        return event.isCommitted();
+    }
+
     private static class TransactionMock extends Transaction {
 
         private List<VirtualEvent> virtualEvents;
         private boolean instantApply;
 
         private TransactionMock(Context context, List<VirtualEvent> virtualEvents, boolean instantApply) {
-            super(context, Lists.newArrayList());
+            super(context);
             this.virtualEvents = virtualEvents;
             this.instantApply = instantApply;
         }
@@ -114,7 +113,7 @@ public class VirtualEvent extends Event {
         }
 
         @Override
-        public void commit(DefaultPersistenceManager defaultPersistenceManager) {
+        public void commit() {
             throw new UnsupportedOperationException();
         }
 

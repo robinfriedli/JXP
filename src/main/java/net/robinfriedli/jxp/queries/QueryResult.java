@@ -1,13 +1,12 @@
 package net.robinfriedli.jxp.queries;
 
 import java.util.Collection;
-import java.util.List;
 
 import javax.annotation.Nullable;
 
 import net.robinfriedli.jxp.api.XmlElement;
 
-public class QueryResult<C extends Collection<XmlElement>> {
+public class QueryResult<E extends XmlElement, C extends Collection<E>> {
 
     private final C found;
 
@@ -20,7 +19,7 @@ public class QueryResult<C extends Collection<XmlElement>> {
     }
 
     @Nullable
-    public XmlElement getFirstResult() {
+    public E getFirstResult() {
         if (found.size() > 0) {
             return found.iterator().next();
         }
@@ -28,31 +27,20 @@ public class QueryResult<C extends Collection<XmlElement>> {
         return null;
     }
 
-    public XmlElement requireFirstResult() {
+    public E requireFirstResult() {
         expectAtLeast(1);
         return getFirstResult();
     }
 
     @Nullable
-    public XmlElement getOnlyResult() {
+    public E getOnlyResult() {
         expectAtMost(1);
         return getFirstResult();
     }
 
-    public XmlElement requireOnlyResult() {
+    public E requireOnlyResult() {
         expect(1);
         return requireFirstResult();
-    }
-
-    @SuppressWarnings("unchecked")
-    public QueryResult<C> order(Order order) {
-        if (found instanceof List) {
-            order.applyOrder((List<XmlElement>) found);
-        } else {
-            throw new IllegalStateException("Cannot sort " + found.getClass().getSimpleName() + ". Needs to be list.");
-        }
-
-        return this;
     }
 
     public void expect(int i) throws IllegalStateException {
@@ -81,4 +69,9 @@ public class QueryResult<C extends Collection<XmlElement>> {
             throw new IllegalStateException("Expected " + min + " to " + max + " elements but found " + found.size());
         }
     }
+
+    public long count() {
+        return found.size();
+    }
+
 }

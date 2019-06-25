@@ -11,6 +11,7 @@ import net.robinfriedli.jxp.api.JxpBackend;
 import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.queries.Conditions;
 import net.robinfriedli.jxp.queries.QueryResult;
+import net.robinfriedli.jxp.queries.ResultStream;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
@@ -20,6 +21,13 @@ import org.w3c.dom.Element;
  * or deletes an XmlElement.
  */
 public interface Context extends AutoCloseable {
+
+    /**
+     * AutoCloseable#close override that does not throw an exception since this implementation never does so no
+     * catch block is required
+     */
+    @Override
+    void close();
 
     /**
      * @return the {@link JxpBackend} instance that created this Context
@@ -72,9 +80,12 @@ public interface Context extends AutoCloseable {
     <E> BindableContext<E> copy(String targetPath, E objectToBind);
 
     /**
-     * @return the {@link DefaultPersistenceManager} for this Context
+     * Reloads the elements stored in this Context. This means all current XmlElement instances will be cleared and
+     * phantomized and re-instantiated based on the current state of the physical Document and the dom document will be
+     * re-parsed. In case of a LazyContext this only does the second part. This action in only possible for persistent
+     * contexts.
      */
-    DefaultPersistenceManager getPersistenceManager();
+    void reload();
 
     /**
      * @return the path of the XML file of this Context
@@ -97,7 +108,7 @@ public interface Context extends AutoCloseable {
     List<XmlElement> getElementsRecursive();
 
     /**
-     * @return all XmlElements in this Context that match {@param predicate}
+     * @return all XmlElements (including their sub elements) in this Context that match {@param predicate}
      */
     List<XmlElement> getElements(Predicate<XmlElement> predicate);
 
@@ -154,20 +165,34 @@ public interface Context extends AutoCloseable {
      * any of the ignored subClasses. Used to exclude subclasses.
      *
      * @param c Class to check
-     * @param ingoredSubClasses subclasses to exclude
+     * @param ignoredSubClasses subclasses to exclude
      * @param <E> Type to return
      * @return All Elements that are an instance of specified Class but not specified subclasses
      */
-    <E extends XmlElement> List<E> getInstancesOf(Class<E> c, Class... ingoredSubClasses);
+    <E extends XmlElement> List<E> getInstancesOf(Class<E> c, Class... ignoredSubClasses);
 
     /**
      * Checks all XmlElements for provided {@link Predicate}s and returns {@link QueryResult} with matching elements.
      * See {@link Conditions} for useful predicates.
      *
-     * @param condition
-     * @return
+     * @param condition Predicate to filter elements with, see {@link Conditions}
+     * @return a stream of found elements
      */
-    QueryResult<List<XmlElement>> query(Predicate<XmlElement> condition);
+    ResultStream<XmlElement> query(Predicate<XmlElement> condition);
+
+    /**
+     * Like {@link #query(Predicate)} but casts the found elements to the given class
+     */
+    <E extends XmlElement> ResultStream<E> query(Predicate<XmlElement> condition, Class<E> type);
+
+    /**
+     * Executes the provided XPath query and returns the {@link XmlElement}s in this Context that are based on the
+     * results or, if this is a {@link LazyContext}, instantiates {@link XmlElement}s based on the results.
+     *
+     * @param xPathQuery the XPath query
+     * @return XmlElements instances based on results
+     */
+    List<XmlElement> xPathQuery(String xPathQuery);
 
     /**
      * Add Element to memory
@@ -299,10 +324,21 @@ public interface Context extends AutoCloseable {
     void invoke(boolean commit, boolean instantApply, Runnable task, Object envVar);
 
     /**
+     * Like {@link #invoke(boolean, boolean, Runnable)} but runs in a {@link SequentialTx}, meaning all changes will
+     * get committed / flushed each time the amount of changes recorded by the transaction reaches the provided number
+     */
+    <E> E invokeSequential(int sequence, Callable<E> task);
+
+    /**
+     * Like {@link #invokeSequential(int, Callable)} but accepts a runnable instead of a callable
+     */
+    void invokeSequential(int sequence, Runnable task);
+
+    /**
      * A {@link #invoke(boolean, boolean, Callable)} implementation that will be executed asynchronously. This is
      * required for tasks invoked after the Transaction has stopped recording but before the Transaction has been
      * committed and closed. When this happens depends on whether it is an InstantApplyTx or not; if it is an
-     * InstantApplyTx the Transaction will keep recording and applying changes until {@link Transaction#commit(DefaultPersistenceManager)}
+     * InstantApplyTx the Transaction will keep recording and applying changes until {@link Transaction#commit()}
      * is called, if it is not it's until {@link Transaction#apply()} is called. After that point changes can neither
      * be added nor the regular invoke method can be used.
      *
@@ -364,13 +400,6 @@ public interface Context extends AutoCloseable {
     void apply(Runnable task);
 
     /**
-     * set the variable for this Context. For a description on envVar see {@link #getEnvVar()}
-     *
-     * @param envVar variable to set
-     */
-    void setEnvVar(Object envVar);
-
-    /**
      * The environment variable can be anything you might need somewhere els in context with this transaction.
      * The environment variable is set when using either method {@link #invoke(boolean, boolean, Callable, Object)}
      * {@link #invoke(boolean, boolean, Runnable, Object)}
@@ -384,15 +413,17 @@ public interface Context extends AutoCloseable {
     Object getEnvVar();
 
     /**
+     * set the variable for this Context. For a description on envVar see {@link #getEnvVar()}
+     *
+     * @param envVar variable to set
+     */
+    void setEnvVar(Object envVar);
+
+    /**
      * @return the current Transaction
      */
     @Nullable
     Transaction getTransaction();
-
-    /**
-     * @return the current Transaction, requires an active Transaction
-     */
-    Transaction getActiveTransaction();
 
     /**
      * Set this Context's Transaction. Used internally to switch between Transaction e.g. for VirtualEvents
@@ -400,6 +431,11 @@ public interface Context extends AutoCloseable {
      * @param transaction to set
      */
     void setTransaction(Transaction transaction);
+
+    /**
+     * @return the current Transaction, requires an active Transaction
+     */
+    Transaction getActiveTransaction();
 
     /**
      * Partitionable Context that can be bound to an object of Type E. The Context can then be retrieved from the

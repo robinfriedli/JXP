@@ -19,6 +19,7 @@ import javax.xml.transform.stream.StreamResult;
 
 import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.api.BaseXmlElement;
+import net.robinfriedli.jxp.api.StaticXmlElementFactory;
 import net.robinfriedli.jxp.api.XmlAttribute;
 import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.events.AttributeChangingEvent;
@@ -31,10 +32,16 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
-import org.xml.sax.SAXParseException;
 
+
+/**
+ * Deprecated as of v1.1 and replaced by the static StaticXmlElementFactory and StaticXmlParser classes
+ */
+@SuppressWarnings("Duplicates")
+@Deprecated
 public class DefaultPersistenceManager {
 
+    @Deprecated
     public List<XmlElement> getAllElements(Context context) {
         List<XmlElement> xmlElements = Lists.newArrayList();
         List<Element> allTopLevelElements = getAllTopLevelElements(context.getDocument());
@@ -46,8 +53,9 @@ public class DefaultPersistenceManager {
         return xmlElements;
     }
 
+    @Deprecated
     public XmlElement instantiateXmlElement(Element element, Context context) {
-        Map<String, Class<? extends XmlElement>> instantiationContributions = context.getBackend().getInstantiationContributions();
+        Map<String, Class<? extends XmlElement>> instantiationContributions = StaticXmlElementFactory.INSTANTIATION_CONTRIBUTIONS;
         List<Element> subElements = getChildren(element);
         List<XmlElement> instantiatedSubElems = Lists.newArrayList();
 
@@ -79,6 +87,7 @@ public class DefaultPersistenceManager {
         }
     }
 
+    @Deprecated
     public void commitElementChanges(ElementChangingEvent event) throws CommitException {
         XmlElement element = event.getSource();
         List<AttributeChangingEvent> attributeChanges = event.getChangedAttributes();
@@ -90,20 +99,24 @@ public class DefaultPersistenceManager {
             }
         }
         if (event.textContentChanged()) {
+            //noinspection ConstantConditions
             setTextContent(event.getChangedTextContent());
         }
     }
 
+    @Deprecated
     public void setAttribute(XmlElement xmlElement, AttributeChangingEvent change) throws CommitException {
         Element element = requireElement(xmlElement);
         element.setAttribute(change.getAttribute().getAttributeName(), change.getNewValue());
     }
 
+    @Deprecated
     public void setTextContent(ValueChangingEvent<String> changedTextContent) throws CommitException {
         Element element = requireElement(changedTextContent.getSource());
         element.setTextContent(changedTextContent.getNewValue());
     }
 
+    @Deprecated
     public void writeToFile(Context context) throws CommitException {
         if (!context.isPersistent()) {
             throw new CommitException("Context is not persistent. Cannot write to file");
@@ -114,6 +127,7 @@ public class DefaultPersistenceManager {
             TransformerFactory transformerFactory = TransformerFactory.newInstance();
             Transformer transformer = transformerFactory.newTransformer();
             DOMSource source = new DOMSource(doc);
+            @SuppressWarnings("ConstantConditions")
             StreamResult result = new StreamResult(context.getFile());
 
             transformer.transform(source, result);
@@ -122,6 +136,7 @@ public class DefaultPersistenceManager {
         }
     }
 
+    @Deprecated
     public Document parseDocument(File xml) {
         try {
             DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
@@ -132,10 +147,12 @@ public class DefaultPersistenceManager {
         }
     }
 
+    @Deprecated
     public void persistElement(Document document, XmlElement element) {
         persistElement(document, element, null);
     }
 
+    @Deprecated
     public void persistElement(Document doc, XmlElement element, @Nullable Element superElem) {
         Element elem = doc.createElement(element.getTagName());
 
@@ -155,12 +172,6 @@ public class DefaultPersistenceManager {
             rootElem.appendChild(elem);
         }
 
-        if (element.hasSubElements()) {
-            for (XmlElement subElement : element.getSubElements()) {
-                persistElement(doc, subElement, elem);
-            }
-        }
-
         element.setElement(elem);
         if (!element.hasChanges()) {
             element.setState(XmlElement.State.CLEAN);
@@ -169,6 +180,7 @@ public class DefaultPersistenceManager {
         }
     }
 
+    @Deprecated
     public void castElement(XmlElement target, XmlElement source) {
         if (target.matchesStructure(source)) {
             List<AttributeChangingEvent> changedAttributes = Lists.newArrayList();
@@ -229,6 +241,7 @@ public class DefaultPersistenceManager {
         return getChildren(documentElement);
     }
 
+    @Deprecated
     public List<Element> getChildren(Element parent) {
         NodeList childNodes = parent.getChildNodes();
         List<Element> elements = Lists.newArrayList();
@@ -243,6 +256,7 @@ public class DefaultPersistenceManager {
         return elements;
     }
 
+    @Deprecated
     private Element requireElement(XmlElement xmlElement) throws CommitException {
         try {
             return xmlElement.requireElement();

@@ -1,7 +1,6 @@
 package net.robinfriedli.jxp.events;
 
 import net.robinfriedli.jxp.api.XmlElement;
-import net.robinfriedli.jxp.persist.DefaultPersistenceManager;
 
 public class HelperEvent extends Event {
 
@@ -20,7 +19,7 @@ public class HelperEvent extends Event {
     }
 
     @Override
-    public void commit(DefaultPersistenceManager persistenceManager) {
+    public void commit() {
         throw new UnsupportedOperationException("Cannot commit " + this.getClass().getName());
     }
 }

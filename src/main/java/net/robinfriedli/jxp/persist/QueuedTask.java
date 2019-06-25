@@ -4,6 +4,9 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class QueuedTask<E> extends FutureTask<E> {
 
     private final boolean cancelOnFailure;
@@ -25,8 +28,8 @@ public class QueuedTask<E> extends FutureTask<E> {
         try {
             get();
         } catch (InterruptedException | ExecutionException e) {
-            System.err.println("Exception thrown by QueuedTask:");
-            e.printStackTrace();
+            Logger logger = LoggerFactory.getLogger("JXP QueuedTasks");
+            logger.error("Exception thrown by QueuedTask", e);
         }
     }
 

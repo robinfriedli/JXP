@@ -1,8 +1,5 @@
 package net.robinfriedli.jxp.persist;
 
-import java.util.List;
-
-import net.robinfriedli.jxp.events.Event;
 import org.w3c.dom.Element;
 
 /**
@@ -14,12 +11,12 @@ import org.w3c.dom.Element;
  */
 public class ApplyOnlyTx extends Transaction {
 
-    public ApplyOnlyTx(Context context, List<Event> changes) {
-        super(context, changes);
+    public ApplyOnlyTx(Context context) {
+        super(context);
     }
 
     @Override
-    public void commit(DefaultPersistenceManager manager) {
+    public void commit() {
         throw new UnsupportedOperationException("Attempting to commit an apply-only Transaction");
     }
 }

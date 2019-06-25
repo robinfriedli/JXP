@@ -25,16 +25,32 @@ public class Transaction {
 
     private final Context context;
     private final List<Event> changes;
+    private final List<QueuedTask> queuedTasks;
     private boolean rollback = false;
     private boolean failed = false;
     private State state;
-    private final List<QueuedTask> queuedTasks;
 
-    public Transaction(Context context, List<Event> changes) {
+    public Transaction(Context context) {
         this.context = context;
-        this.changes = changes;
+        this.changes = Lists.newArrayList();
         state = State.RUNNING;
         queuedTasks = Lists.newArrayList();
+    }
+
+    public static Transaction createTx(Context context) {
+        return new Transaction(context);
+    }
+
+    public static ApplyOnlyTx createApplyOnlyTx(Context context) {
+        return new ApplyOnlyTx(context);
+    }
+
+    public static InstantApplyTx createInstantApplyTx(Context context) {
+        return new InstantApplyTx(context);
+    }
+
+    public static InstantApplyOnlyTx createInstantApplyOnlyTx(Context context) {
+        return new InstantApplyOnlyTx(context);
     }
 
     public Context getContext() {
@@ -42,7 +58,7 @@ public class Transaction {
     }
 
     public void addChange(Event change) {
-        if (isRecording()) {
+        if (isActive()) {
             changes.add(change);
         } else {
             throw new IllegalStateException("Transaction is not recording changes");
@@ -50,7 +66,7 @@ public class Transaction {
     }
 
     public void addChanges(List<Event> changes) {
-        if (isRecording()) {
+        if (isActive()) {
             this.changes.addAll(changes);
         } else {
             throw new IllegalStateException("Transaction is not recording changes");
@@ -94,8 +110,8 @@ public class Transaction {
             .collect(Collectors.toList());
     }
 
-    public List<XmlElement> getAffectedElements() {
-        return changes.stream().map(Event::getSource).collect(Collectors.toList());
+    public Set<XmlElement> getAffectedElements() {
+        return changes.stream().map(Event::getSource).collect(Collectors.toSet());
     }
 
     public boolean isRollback() {
@@ -125,24 +141,13 @@ public class Transaction {
         context.getBackend().fireTransactionApplied(this);
     }
 
-    public void commit(DefaultPersistenceManager manager) throws CommitException {
+    public void commit() throws CommitException {
         if (!isRollback()) {
             setState(State.COMMITTING);
-            try {
-                for (Event change : changes) {
-                    if (change.isApplied()) {
-                        change.commit(manager);
-                    } else {
-                        throw new CommitException("Trying to commit a change that has not been applied.");
-                    }
-                }
+            flush();
 
-                if (context.isPersistent()) {
-                    manager.writeToFile(context);
-                }
-            } catch (CommitException e) {
-                rollback();
-                throw new CommitException("Exception during commit. Transaction rolled back.", e);
+            if (context.isPersistent()) {
+                StaticXmlParser.writeToFile(context);
             }
 
             setState(State.COMMITTED);
@@ -152,7 +157,28 @@ public class Transaction {
         }
     }
 
-    public void rollback() {
+    void flush() throws CommitException {
+        context.getBackend().fireOnBeforeFlush(this);
+        try {
+            for (Event change : changes) {
+                if (change.isApplied()) {
+                    change.commit();
+                } else {
+                    throw new CommitException("Trying to commit a change that has not been applied.");
+                }
+            }
+        } catch (Throwable e) {
+            rollback();
+            throw new CommitException("Exception during commit. Transaction rolled back.", e);
+        } finally {
+            changes.clear();
+            if (context instanceof LazyContext) {
+                ((LazyContext) context).clear();
+            }
+        }
+    }
+
+    void rollback() {
         setState(State.ROLLING_BACK);
         rollback = true;
         fail();
@@ -170,23 +196,7 @@ public class Transaction {
         return this instanceof InstantApplyTx;
     }
 
-    public static Transaction createTx(Context context) {
-        return new Transaction(context, Lists.newArrayList());
-    }
-
-    public static ApplyOnlyTx createApplyOnlyTx(Context context) {
-        return new ApplyOnlyTx(context, Lists.newArrayList());
-    }
-
-    public static InstantApplyTx createInstantApplyTx(Context context) {
-        return new InstantApplyTx(context, Lists.newArrayList());
-    }
-
-    public static InstantApplyOnlyTx createInstantApplyOnlyTx(Context context) {
-        return new InstantApplyOnlyTx(context, Lists.newArrayList());
-    }
-
-    public boolean isRecording() {
+    public boolean isActive() {
         if (isInstantApply()) {
             return getState().isUseable();
         } else {
@@ -194,12 +204,12 @@ public class Transaction {
         }
     }
 
-    public void setState(State state) {
-        this.state = state;
-    }
-
     public State getState() {
         return state;
+    }
+
+    public void setState(State state) {
+        this.state = state;
     }
 
     public void fail() {

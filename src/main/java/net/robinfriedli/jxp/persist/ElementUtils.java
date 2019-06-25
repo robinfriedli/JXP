@@ -1,11 +1,14 @@
 package net.robinfriedli.jxp.persist;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
+import com.google.common.collect.Lists;
 import org.w3c.dom.Element;
 import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 
 public class ElementUtils {
 
@@ -43,6 +46,29 @@ public class ElementUtils {
         if (parentNode != null) {
             parentNode.removeChild(element);
         }
+    }
+
+    public static List<Element> nodeListToElementList(NodeList nodeList) {
+        List<Element> elements = Lists.newArrayList();
+        for (int i = 0; i < nodeList.getLength(); i++) {
+            elements.add((Element) nodeList.item(i));
+        }
+
+        return elements;
+    }
+
+    public static List<Element> getChildren(Element parent) {
+        NodeList childNodes = parent.getChildNodes();
+        List<Element> elements = Lists.newArrayList();
+
+        for (int i = 0; i < childNodes.getLength(); i++) {
+            Node node = childNodes.item(i);
+            if (node instanceof Element) {
+                elements.add((Element) node);
+            }
+        }
+
+        return elements;
     }
 
 }

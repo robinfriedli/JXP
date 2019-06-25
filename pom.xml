@@ -9,7 +9,7 @@
   <groupId>net.robinfriedli.JXP</groupId>
   <artifactId>JXP</artifactId>
   <packaging>jar</packaging>
-  <version>1.0</version>
+  <version>1.1</version>
   <build>
     <plugins>
       <plugin>
@@ -41,6 +41,12 @@
       <artifactId>selenium-support</artifactId>
       <version>3.14.0</version>
     </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+      <version>1.7.26</version>
+    </dependency>
+
   </dependencies>
 
   <repositories>

@@ -1,5 +1,10 @@
 package net.robinfriedli.jxp.persist;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 import com.google.common.base.Strings;
 import net.robinfriedli.jxp.api.XmlAttribute;
 import net.robinfriedli.jxp.api.XmlElement;
@@ -9,11 +14,6 @@ import net.robinfriedli.stringlist.StringList;
 import net.robinfriedli.stringlist.StringListImpl;
 import org.openqa.selenium.support.ui.Quotes;
 import org.w3c.dom.Element;
-
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 /**
  * Helper class that represents the current state of the {@link XmlElement} in the XML file.

@@ -11,13 +11,29 @@ import org.w3c.dom.Element;
 /**
  * Default implementation of {@link XmlElement} that will be instantiated for any XML element with an unknown tag name
  * when creating a new {@link Context}. You can make JXP instantiate your own classes based on the XML element's tag name
- * using {@link JxpBackend#mapClass(String, Class)}
+ * using {@link StaticXmlElementFactory#mapClass(String, Class)}
  */
 public class BaseXmlElement extends AbstractXmlElement {
 
+    public BaseXmlElement(String tagName) {
+        super(tagName);
+    }
+
+    public BaseXmlElement(String tagName, Map<String, ?> attributeMap) {
+        super(tagName, attributeMap);
+    }
+
+    public BaseXmlElement(String tagName, Map<String, ?> attributeMap, String textContent) {
+        super(tagName, attributeMap, textContent);
+    }
+
+    public BaseXmlElement(String tagName, Map<String, ?> attributeMap, List<XmlElement> subElements) {
+        super(tagName, attributeMap, subElements);
+    }
+
     // constructor to instantiate new XmlElements with
-    public BaseXmlElement(String tagName, Map<String, ?> attributeMap, List<XmlElement> subElements, String textContent, Context context) {
-        super(tagName, attributeMap, subElements, textContent, context);
+    public BaseXmlElement(String tagName, Map<String, ?> attributeMap, List<XmlElement> subElements, String textContent) {
+        super(tagName, attributeMap, subElements, textContent);
     }
 
     // invoked when reading from file

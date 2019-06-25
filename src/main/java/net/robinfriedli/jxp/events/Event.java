@@ -1,8 +1,6 @@
 package net.robinfriedli.jxp.events;
 
 import net.robinfriedli.jxp.api.XmlElement;
-import net.robinfriedli.jxp.exceptions.CommitException;
-import net.robinfriedli.jxp.persist.DefaultPersistenceManager;
 
 public abstract class Event {
 
@@ -24,21 +22,21 @@ public abstract class Event {
 
     public abstract void revert();
 
-    public abstract void commit(DefaultPersistenceManager persistenceManager) throws CommitException;
-
-    public void setApplied(boolean applied) {
-        this.applied = applied;
-    }
+    public abstract void commit();
 
     public boolean isApplied() {
         return applied;
     }
 
-    public void setCommitted(boolean committed) {
-        this.committed = committed;
+    public void setApplied(boolean applied) {
+        this.applied = applied;
     }
 
     public boolean isCommitted() {
         return committed;
+    }
+
+    public void setCommitted(boolean committed) {
+        this.committed = committed;
     }
 }

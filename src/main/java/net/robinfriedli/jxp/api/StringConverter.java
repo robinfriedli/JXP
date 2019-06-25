@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.function.Function;
 
 import com.google.common.collect.Lists;
+import net.robinfriedli.jxp.exceptions.ConversionException;
 
 public class StringConverter {
 
@@ -22,15 +23,24 @@ public class StringConverter {
     }
 
 
-    public static <V> V convert(String s, Class<V> target) {
+    public static <V> V convert(String s, Class<V> target) throws ConversionException {
         StringConversionContribution<V> converter = getConverter(target);
-        return converter.convert(s);
+
+        try {
+            return converter.convert(s);
+        } catch (Throwable e) {
+            throw new ConversionException(e);
+        }
     }
 
     @SuppressWarnings("unchecked")
-    public static <V> String reverse(V objectToReverse) {
+    public static <V> String reverse(V objectToReverse) throws ConversionException {
         StringConversionContribution<V> converter = (StringConversionContribution<V>) getConverter(objectToReverse.getClass());
-        return converter.reverse(objectToReverse);
+        try {
+            return converter.reverse(objectToReverse);
+        } catch (Throwable e) {
+            throw new ConversionException(e);
+        }
     }
 
     public static <V> void map(Class<V> targetClass, Function<String, V> conversionFunc, Function<V, String> reverseFunc) {

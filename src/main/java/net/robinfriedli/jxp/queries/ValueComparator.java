@@ -9,6 +9,7 @@ import javax.annotation.Nullable;
 import com.google.common.base.Strings;
 import net.robinfriedli.jxp.api.StringConverter;
 import net.robinfriedli.jxp.api.XmlElement;
+import net.robinfriedli.jxp.exceptions.ConversionException;
 
 public final class ValueComparator {
 
@@ -102,12 +103,20 @@ public final class ValueComparator {
         switch (source) {
             case ATTRIBUTE:
                 return element -> element.hasAttribute(attributeName)
-                    && matchFunc.apply(element.getAttribute(attributeName).getValue());
+                    && getMatch(element.getAttribute(attributeName).getValue(), matchFunc);
             case TEXT_CONTENT:
-                return element -> matchFunc.apply(element.getTextContent());
+                return element -> getMatch(element.getTextContent(), matchFunc);
         }
 
         throw new IllegalStateException("Illegal source " + source);
+    }
+
+    private boolean getMatch(String toCheck, Function<String, Boolean> matchFunc) {
+        try {
+            return matchFunc.apply(toCheck);
+        } catch (ConversionException e) {
+            return false;
+        }
     }
 
     enum Source {

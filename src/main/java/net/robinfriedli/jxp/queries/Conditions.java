@@ -50,4 +50,9 @@ public final class Conditions {
     public static Predicate<XmlElement> instanceOf(Class<? extends XmlElement> c) {
         return c::isInstance;
     }
+
+    public static Predicate<XmlElement> tagName(String tagName) {
+        return elem -> elem.getTagName().equals(tagName);
+    }
+
 }

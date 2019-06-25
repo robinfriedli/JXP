@@ -7,9 +7,8 @@ import javax.annotation.Nullable;
 
 import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.api.XmlElement;
-import net.robinfriedli.jxp.exceptions.CommitException;
 import net.robinfriedli.jxp.exceptions.PersistException;
-import net.robinfriedli.jxp.persist.DefaultPersistenceManager;
+import org.w3c.dom.Element;
 
 public class ElementChangingEvent extends Event {
 
@@ -37,14 +36,14 @@ public class ElementChangingEvent extends Event {
         super(source);
         this.changedAttributes = changedAttributes;
         this.changedTextContent = changedTextContent;
+    }
 
-        if (changedAttributes != null && changedAttributes.stream().anyMatch(a -> a.getSource() != getSource())) {
-            throw new UnsupportedOperationException("Attempting to pass an attribute change to an element change of a different source");
-        }
+    public static ElementChangingEvent attributeChange(AttributeChangingEvent attributeChange) {
+        return new ElementChangingEvent(attributeChange);
+    }
 
-        if (changedTextContent != null && changedTextContent.getSource() != getSource()) {
-            throw new UnsupportedOperationException("Attempting to pass text content change to an element change of a different source");
-        }
+    public static ElementChangingEvent textContentChange(ValueChangingEvent<String> changedTextContent) {
+        return new ElementChangingEvent(changedTextContent);
     }
 
     @Nullable
@@ -72,15 +71,43 @@ public class ElementChangingEvent extends Event {
     public void revert() {
         if (isApplied()) {
             getSource().revertChange(this);
-            if (!isCommitted()) {
+            if (isCommitted()) {
+                Element element = getSource().requireElement();
+                List<AttributeChangingEvent> changedAttributes = getChangedAttributes();
+
+                if (changedAttributes != null && !changedAttributes.isEmpty()) {
+                    for (AttributeChangingEvent changedAttribute : changedAttributes) {
+                        element.setAttribute(changedAttribute.getAttribute().getAttributeName(), changedAttribute.getOldValue());
+                    }
+                }
+
+                if (textContentChanged()) {
+                    //noinspection ConstantConditions
+                    element.setTextContent(changedTextContent.getOldValue());
+                }
+            } else {
                 getSource().removeChange(this);
             }
         }
     }
 
     @Override
-    public void commit(DefaultPersistenceManager persistenceManager) throws CommitException {
-        persistenceManager.commitElementChanges(this);
+    public void commit() {
+        XmlElement element = getSource();
+        Element elem = element.requireElement();
+        List<AttributeChangingEvent> attributeChanges = getChangedAttributes();
+
+        if (attributeChanges != null && !attributeChanges.isEmpty()) {
+            for (AttributeChangingEvent attributeChange : attributeChanges) {
+                elem.setAttribute(attributeChange.getAttribute().getAttributeName(), attributeChange.getNewValue());
+                attributeChange.setCommitted(true);
+            }
+        }
+        if (textContentChanged()) {
+            //noinspection ConstantConditions
+            elem.setTextContent(changedTextContent.getNewValue());
+        }
+
         setCommitted(true);
         getSource().removeChange(this);
     }
@@ -117,14 +144,6 @@ public class ElementChangingEvent extends Event {
 
     public boolean textContentChanged() {
         return changedTextContent != null;
-    }
-
-    public static ElementChangingEvent attributeChange(AttributeChangingEvent attributeChange) {
-        return new ElementChangingEvent(attributeChange);
-    }
-
-    public static ElementChangingEvent textContentChange(ValueChangingEvent<String> changedTextContent) {
-        return new ElementChangingEvent(changedTextContent);
     }
 
 }

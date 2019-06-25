@@ -1,17 +1,16 @@
 package net.robinfriedli.jxp.queries;
 
 import java.util.Collection;
-import java.util.List;
 import java.util.function.Predicate;
-import java.util.stream.Collector;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import net.robinfriedli.jxp.api.XmlElement;
+import net.robinfriedli.jxp.exceptions.QueryException;
 
 public class Query {
 
     private final Predicate<XmlElement> expression;
+    private Order order;
 
     public Query(Predicate<XmlElement> expression) {
         this.expression = expression;
@@ -21,21 +20,32 @@ public class Query {
         return new Query(expression);
     }
 
-    public QueryResult<List<XmlElement>> execute(Collection<XmlElement> elements) {
-        Stream<XmlElement> found = elements.stream().filter(expression);
-
-        return new QueryResult<>(found.collect(Collectors.toList()));
+    private static QueryException getCastException(Class type, Throwable cause) {
+        return new QueryException("Some found elements could not be converted to " + type + ". " +
+            "Consider expanding your query with the Conditions#instanceOf condition.", cause);
     }
 
-    public <C extends Collection<XmlElement>> QueryResult<C> execute(Collection<XmlElement> elements, Collector<XmlElement, ?, C> collector) {
-        Stream<XmlElement> found = elements.stream().filter(expression);
-
-        return new QueryResult<>(found.collect(collector));
+    public ResultStream<XmlElement> execute(Collection<XmlElement> elements) {
+        return execute(elements, XmlElement.class);
     }
 
-    public long count(Collection<XmlElement> elements) {
-        Stream<XmlElement> found = elements.stream().filter(expression);
-        return found.count();
+    public <E extends XmlElement> ResultStream<E> execute(Collection<XmlElement> elements, Class<E> type) {
+        try {
+            Stream<E> found = elements.stream().filter(expression).map(type::cast);
+
+            if (order != null) {
+                found = order.applyOrder(found);
+            }
+
+            return new ResultStream<>(found);
+        } catch (ClassCastException e) {
+            throw getCastException(type, e);
+        }
+    }
+
+    public Query order(Order order) {
+        this.order = order;
+        return this;
     }
 
 }

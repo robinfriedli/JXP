@@ -1,6 +1,7 @@
 package net.robinfriedli.jxp.api;
 
 import java.util.List;
+import java.util.function.Predicate;
 
 import javax.annotation.Nullable;
 
@@ -9,6 +10,9 @@ import net.robinfriedli.jxp.events.ElementChangingEvent;
 import net.robinfriedli.jxp.events.ValueChangingEvent;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.persist.Context;
+import net.robinfriedli.jxp.queries.Conditions;
+import net.robinfriedli.jxp.queries.QueryResult;
+import net.robinfriedli.jxp.queries.ResultStream;
 import org.w3c.dom.Element;
 
 /**
@@ -19,8 +23,24 @@ public interface XmlElement {
 
     /**
      * Persists a new XmlElement in {@link State#CONCEPTION} to the XML file
+     *
+     * @param context the context for the document to save to element to
      */
-    void persist();
+    void persist(Context context);
+
+    /**
+     * Method used by {@link #addSubElement(XmlElement)} to append this subElement to a parent
+     *
+     * @param context the context for the document to save to element to
+     * @param newParent the parent element
+     */
+    void persist(Context context, XmlElement newParent);
+
+    /**
+     * @return true if this XmlElement is not in any Context. This is the case when an XmlElement has just been
+     * instantiated before persisting it to a Context
+     */
+    boolean isDetached();
 
     /**
      * Creates a new XmlElement with the attributes and text content of this one. This does not require a transaction as
@@ -36,7 +56,7 @@ public interface XmlElement {
 
     /**
      * Removes the {@link Element} represented by this XmlElement from the XML document. Phantoms can be persisted again
-     * by using the {@link #persist()} method, or, for subElements, by adding it to a new parent using {@link #addSubElement(XmlElement)}
+     * by using the {@link #persist(Context)} method, or, for subElements, by adding it to a new parent using {@link #addSubElement(XmlElement)}
      * after removing it from the old one
      */
     void phantomize();
@@ -49,21 +69,14 @@ public interface XmlElement {
     Element getElement();
 
     /**
-     * Like {@link #getElement()} but throws Exception if null
-     */
-    Element requireElement() throws IllegalStateException;
-
-    /**
      * Sets the created {@link Element} for this XmlElement. Used after a new XmlElement has been persisted.
      */
     void setElement(Element element);
 
     /**
-     * Defines the parent of a subElement. This is not permitted if the element already has a parent, the element first
-     * has to be removed from the old parent using {@link #removeSubElement(XmlElement)}. This method should generally
-     * only be used by the API.
+     * Like {@link #getElement()} but throws Exception if null
      */
-    void setParent(XmlElement parent);
+    Element requireElement() throws IllegalStateException;
 
     /**
      * Set the parent of this XmlElement to null. Used for subElements when {@link #removeSubElement(XmlElement)} is called
@@ -74,6 +87,13 @@ public interface XmlElement {
      * @return the parent Element of this XmlElement
      */
     XmlElement getParent();
+
+    /**
+     * Defines the parent of a subElement. This is not permitted if the element already has a parent, the element first
+     * has to be removed from the old parent using {@link #removeSubElement(XmlElement)}. This method should generally
+     * only be used by the API.
+     */
+    void setParent(XmlElement parent);
 
     /**
      * @return true if this XmlElement has a parent element
@@ -168,8 +188,13 @@ public interface XmlElement {
     List<XmlElement> getSubElements();
 
     /**
+     * @return all subElements and their subElements
+     */
+    List<XmlElement> getSubElementsRecursive();
+
+    /**
      * Get all subElements of this XmlElement of type {@link E}. Use this to method to treat subElements as instances of
-     * their original class rather than XmlElements.
+     * their original class rather than XmlElements. As of v1.1 an alias for method {@link #getInstancesOf(Class)}
      *
      * @param type Subclass of XmlElement you want to filter and cast the subElements to
      * @param <E> target Type. Subclass of XmlElement
@@ -277,8 +302,8 @@ public interface XmlElement {
 
     /**
      * Delete this XmlElement. Creates an {@link net.robinfriedli.jxp.events.ElementDeletingEvent} which, when applied,
-     * will set this XmlElement to {@link State#PHANTOM}. Only when committing the XmlElement will be fully removed from
-     * its {@link Context} and XML file.
+     * will remove the element from its Context and set this XmlElement to {@link State#PHANTOM}. Only when committing
+     * the XmlElement will be fully removed from its XML file.
      */
     void delete();
 
@@ -387,10 +412,7 @@ public interface XmlElement {
     void clearChanges();
 
     /**
-     * Lock this XmlElement blocking any changes from being added. This happens when an XmlElement is recognised as a
-     * duplicate while adding, meaning they have the same {@link #getId()}. In this case the existing XmlElement would
-     * adopt all changes from the new XmlElement if there are any differences and the new XmlElement gets locked, disabling
-     * it from being added to any {@link Context} or receiving changes.
+     * Prevents this XmlElement instance from being changed or deleted.
      */
     void lock();
 
@@ -412,6 +434,40 @@ public interface XmlElement {
     void setState(State state);
 
     /**
+     * Get all subElements that are instance of {@link E}
+     *
+     * @param c Class to check
+     * @param <E> Type of Class to check
+     * @return All Elements that are an instance of specified Class
+     */
+    <E extends XmlElement> List<E> getInstancesOf(Class<E> c);
+
+    /**
+     * Get all subElements that are instance of {@link E}, ignoring elements that are instance of
+     * any of the ignored subClasses. Used to exclude subclasses.
+     *
+     * @param c Class to check
+     * @param ignoredSubClasses subclasses to exclude
+     * @param <E> Type to return
+     * @return All Elements that are an instance of specified Class but not specified subclasses
+     */
+    <E extends XmlElement> List<E> getInstancesOf(Class<E> c, Class... ignoredSubClasses);
+
+    /**
+     * Checks all subElements for provided {@link Predicate}s and returns {@link QueryResult} with matching elements.
+     * See {@link Conditions} for useful predicates.
+     *
+     * @param condition
+     * @return
+     */
+    ResultStream<XmlElement> query(Predicate<XmlElement> condition);
+
+    /**
+     * Like {@link #query(Predicate)} but casts the found elements to the given class
+     */
+    <E extends XmlElement> ResultStream<E> query(Predicate<XmlElement> condition, Class<E> type);
+
+    /**
      * The state of the in memory representation of the XML element
      */
     enum State {
@@ -419,6 +475,11 @@ public interface XmlElement {
          * XmlElement instance has just been created but not yet persisted to the XML document
          */
         CONCEPTION(false),
+
+        /**
+         * The XmlElement is in the process of being saved to the document and is already treated as physical
+         */
+        PERSISTING(true),
 
         /**
          * Element exists and has no uncommitted changes
@@ -434,7 +495,7 @@ public interface XmlElement {
          * Unlike PHANTOM the Element has not actually been deleted yet and still exists in the XML document. This is
          * state of elements after the delete() method has been called but before the change has been committed.
          *
-         * Physical is still false even though that is technically incorrect since this state is only temporary during
+         * Physical is already false even though that is technically incorrect since this state is only temporary during
          * Transactions and we want to treat those element like phantoms. Even IF the element would get persisted again
          * in the same transaction, it would get persisted with all changes applied. Thus eliminating the need to commit
          * changes as with normal physical elements.

@@ -2,6 +2,7 @@ package net.robinfriedli.jxp.persist;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -9,25 +10,32 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import javax.annotation.Nullable;
+import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathConstants;
+import javax.xml.xpath.XPathExpressionException;
+import javax.xml.xpath.XPathFactory;
+
+import org.slf4j.Logger;
 
 import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.api.JxpBackend;
 import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.exceptions.CommitException;
 import net.robinfriedli.jxp.exceptions.PersistException;
+import net.robinfriedli.jxp.exceptions.QueryException;
 import net.robinfriedli.jxp.queries.Query;
-import net.robinfriedli.jxp.queries.QueryResult;
+import net.robinfriedli.jxp.queries.ResultStream;
 import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
 
-public class ContextImpl implements Context {
+public abstract class AbstractContext implements Context {
 
     private final JxpBackend backend;
 
-    private final List<XmlElement> elements;
+    private final Logger logger;
 
-    private final DefaultPersistenceManager persistenceManager;
-
-    private final Document document;
+    private Document document;
 
     private String path;
 
@@ -39,25 +47,23 @@ public class ContextImpl implements Context {
 
     private Object envVar;
 
-    public ContextImpl(JxpBackend backend, DefaultPersistenceManager persistenceManager, Document document) {
+    public AbstractContext(JxpBackend backend, Document document, Logger logger) {
         this.backend = backend;
         this.document = document;
-        this.persistenceManager = persistenceManager;
-        this.elements = persistenceManager.getAllElements(this);
+        this.logger = logger;
     }
 
-    public ContextImpl(JxpBackend backend, DefaultPersistenceManager persistenceManager, File file) {
+    public AbstractContext(JxpBackend backend, File file, Logger logger) {
         this.backend = backend;
         this.path = file.getPath();
         this.file = file;
+        this.logger = logger;
 
         if (!file.exists()) {
             throw new PersistException("File " + file + " does not exist");
         }
 
-        document = persistenceManager.parseDocument(file);
-        this.persistenceManager = persistenceManager;
-        this.elements = persistenceManager.getAllElements(this);
+        document = StaticXmlParser.parseDocument(file);
     }
 
     @Override
@@ -119,7 +125,7 @@ public class ContextImpl implements Context {
             file.createNewFile();
             this.file = file;
             this.path = path;
-            persistenceManager.writeToFile(this);
+            StaticXmlParser.writeToFile(this);
         } catch (IOException | CommitException e) {
             throw new PersistException("Exception persisting Context to file " + path, e);
         }
@@ -131,8 +137,10 @@ public class ContextImpl implements Context {
             throw new UnsupportedOperationException("Can only copy persistent Context");
         }
 
-        Document document = persistenceManager.parseDocument(file);
-        Context context = new ContextImpl(backend, persistenceManager, document);
+        Document document = StaticXmlParser.parseDocument(file);
+        Context context = getClass().equals(CachedContext.class)
+            ? new CachedContext(backend, document, logger)
+            : new LazyContext(backend, document, logger);
         backend.addContext(context);
         context.persist(targetPath);
 
@@ -145,8 +153,8 @@ public class ContextImpl implements Context {
             throw new UnsupportedOperationException("Can only copy persistent Context");
         }
 
-        Document document = persistenceManager.parseDocument(file);
-        BindableContext<E> context = new BindableContextImpl<>(backend, persistenceManager, document, objectToBind);
+        Document document = StaticXmlParser.parseDocument(file);
+        BindableContext<E> context = new BindableCachedContext<>(backend, document, objectToBind, logger);
         backend.addBoundContext(context);
         context.persist(targetPath);
 
@@ -154,8 +162,12 @@ public class ContextImpl implements Context {
     }
 
     @Override
-    public DefaultPersistenceManager getPersistenceManager() {
-        return persistenceManager;
+    public void reload() {
+        if (!isPersistent()) {
+            throw new UnsupportedOperationException("Can only reload persistent Context");
+        }
+
+        document = StaticXmlParser.parseDocument(file);
     }
 
     @Override
@@ -166,11 +178,6 @@ public class ContextImpl implements Context {
     @Override
     public String getRootElem() {
         return document.getDocumentElement().getTagName();
-    }
-
-    @Override
-    public List<XmlElement> getElements() {
-        return elements;
     }
 
     @Override
@@ -193,7 +200,7 @@ public class ContextImpl implements Context {
 
     @Override
     public List<XmlElement> getElements(Predicate<XmlElement> predicate) {
-        return elements.stream().filter(predicate).collect(Collectors.toList());
+        return getElementsRecursive().stream().filter(predicate).collect(Collectors.toList());
     }
 
     @Override
@@ -257,14 +264,28 @@ public class ContextImpl implements Context {
     }
 
     @Override
-    public QueryResult<List<XmlElement>> query(Predicate<XmlElement> condition) {
+    public ResultStream<XmlElement> query(Predicate<XmlElement> condition) {
         return Query.evaluate(condition).execute(getElementsRecursive());
     }
 
     @Override
-    public void addElement(XmlElement element) {
-        elements.add(element);
+    public <E extends XmlElement> ResultStream<E> query(Predicate<XmlElement> condition, Class<E> type) {
+        return Query.evaluate(condition).execute(getElementsRecursive(), type);
     }
+
+    @Override
+    public List<XmlElement> xPathQuery(String xPathQuery) {
+        try {
+            XPath xPath = XPathFactory.newInstance().newXPath();
+            NodeList nodeList = (NodeList) xPath.compile(xPathQuery).evaluate(getDocument(), XPathConstants.NODESET);
+            List<Element> docElements = ElementUtils.nodeListToElementList(nodeList);
+            return handleXPathResults(docElements);
+        } catch (XPathExpressionException e) {
+            throw new QueryException("Exception while compiling XPath query", e);
+        }
+    }
+
+    protected abstract List<XmlElement> handleXPathResults(List<Element> results);
 
     @Override
     public void addElements(List<XmlElement> elements) {
@@ -277,13 +298,8 @@ public class ContextImpl implements Context {
     }
 
     @Override
-    public void removeElement(XmlElement element) {
-        elements.remove(element);
-    }
-
-    @Override
     public void removeElements(List<XmlElement> elements) {
-        this.elements.removeAll(elements);
+        elements.forEach(this::removeElement);
     }
 
     @Override
@@ -295,9 +311,9 @@ public class ContextImpl implements Context {
     public void commitAll() {
         uncommittedTransactions.forEach(tx -> {
             try {
-                tx.commit(persistenceManager);
+                tx.commit();
             } catch (CommitException e) {
-                e.printStackTrace();
+                logger.error("Exception during commit of transaction " + tx, e);
             }
         });
 
@@ -321,65 +337,9 @@ public class ContextImpl implements Context {
     }
 
     @Override
-    public synchronized <E> E invoke(boolean commit, boolean instantApply, Callable<E> task) {
-        boolean nested = false;
-        if (transaction != null) {
-            if (transaction.isRecording()) {
-                nested = true;
-            } else {
-                throw new PersistException("Context has a current Transaction that is not recording anymore. Use Context#futureInvoke to run your task after this has finished.");
-            }
-        } else {
-            getTx(instantApply, false);
-        }
-
-        E returnValue;
-
-        try {
-            returnValue = task.call();
-        } catch (Throwable e) {
-            if (instantApply) {
-                transaction.rollback();
-            } else {
-                transaction.fail();
-            }
-            closeTx();
-            throw new PersistException(e.getClass().getName() + " thrown during task run. Closing transaction.", e);
-        }
-
-        if (!nested) {
-            try {
-                if (instantApply) {
-                    transaction.setState(Transaction.State.APPLIED);
-                    getBackend().fireTransactionApplied(transaction);
-                } else {
-                    transaction.apply();
-                }
-                if (commit) {
-                    try {
-                        transaction.commit(persistenceManager);
-                    } catch (CommitException e) {
-                        e.printStackTrace();
-                    }
-                } else {
-                    uncommittedTransactions.add(transaction);
-                }
-            } finally {
-                List<QueuedTask> queuedTasks = transaction.getQueuedTasks();
-                boolean failed = transaction.failed();
-                closeTx();
-
-                queuedTasks.forEach(t -> {
-                    if (failed && t.isCancelOnFailure()) {
-                        t.cancel(false);
-                    } else {
-                        t.run();
-                    }
-                });
-            }
-        }
-
-        return returnValue;
+    public <E> E invoke(boolean commit, boolean instantApply, Callable<E> task) {
+        Invoker invoker = new Invoker(this, logger);
+        return invoker.invoke(getMode(instantApply, false), 0, task);
     }
 
     @Override
@@ -410,6 +370,20 @@ public class ContextImpl implements Context {
     public void invoke(boolean commit, boolean instantApply, Runnable task, Object envVar) {
         this.envVar = envVar;
         invoke(commit, instantApply, task);
+    }
+
+    @Override
+    public void invokeSequential(int sequence, Runnable task) {
+        invokeSequential(sequence, () -> {
+            task.run();
+            return null;
+        });
+    }
+
+    @Override
+    public <E> E invokeSequential(int sequence, Callable<E> task) {
+        Invoker invoker = new Invoker(this, logger);
+        return invoker.invoke(Invoker.Mode.SEQUENTIAL, sequence, task);
     }
 
     @Override
@@ -468,7 +442,12 @@ public class ContextImpl implements Context {
         // save the currently ongoing transaction
         Transaction currentTx = transaction;
         // switch to a different transaction
-        getTx(instantApply, true);
+        Invoker.Mode mode = getMode(instantApply, true);
+        try {
+            transaction = mode.getTransactionType().getConstructor(Context.class).newInstance(this);
+        } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException e) {
+            throw new PersistException("Exception creating transaction", e);
+        }
 
         try {
             task.run();
@@ -492,13 +471,13 @@ public class ContextImpl implements Context {
     }
 
     @Override
-    public void setEnvVar(Object envVar) {
-        this.envVar = envVar;
+    public Object getEnvVar() {
+        return envVar;
     }
 
     @Override
-    public Object getEnvVar() {
-        return envVar;
+    public void setEnvVar(Object envVar) {
+        this.envVar = envVar;
     }
 
     @Override
@@ -508,32 +487,33 @@ public class ContextImpl implements Context {
     }
 
     @Override
+    public void setTransaction(Transaction transaction) {
+        this.transaction = transaction;
+    }
+
+    @Override
     public Transaction getActiveTransaction() {
         if (transaction == null) {
             throw new PersistException("Context has no transaction. Use Context#invoke");
         }
 
-        if (!transaction.isRecording()) {
-            throw new PersistException("Context has a current Transaction that is not recording anymore. Use Context#futureInvoke to run your task after this has finished.");
+        if (!transaction.isActive()) {
+            throw new PersistException("Context has a current Transaction that is not active anymore (state: "
+                + transaction.getState() + "). Use Context#futureInvoke to run your task after this has finished.");
         }
 
         return transaction;
     }
 
-    @Override
-    public void setTransaction(Transaction transaction) {
-        this.transaction = transaction;
-    }
-
-    private void getTx(boolean instantApply, boolean applyOnly) {
+    private Invoker.Mode getMode(boolean instantApply, boolean applyOnly) {
         if (instantApply && applyOnly) {
-            transaction = Transaction.createInstantApplyOnlyTx(this);
+            return Invoker.Mode.INSTANT_APPLY_ONLY;
         } else if (instantApply) {
-            transaction = Transaction.createInstantApplyTx(this);
+            return Invoker.Mode.INSTANT_APPLY;
         } else if (applyOnly) {
-            transaction = Transaction.createApplyOnlyTx(this);
+            return Invoker.Mode.APPLY_ONLY;
         } else {
-            transaction = Transaction.createTx(this);
+            return Invoker.Mode.COLLECTING_APPLY;
         }
     }
 

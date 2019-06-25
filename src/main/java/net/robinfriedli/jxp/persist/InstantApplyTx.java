@@ -11,8 +11,8 @@ import net.robinfriedli.jxp.events.Event;
  */
 public class InstantApplyTx extends Transaction {
 
-    public InstantApplyTx(Context context, List<Event> changes) {
-        super(context, changes);
+    public InstantApplyTx(Context context) {
+        super(context);
     }
 
     @Override

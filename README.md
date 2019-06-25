@@ -11,7 +11,7 @@ Java XML Persistence API
     <dependency>
       <groupId>net.robinfriedli.JXP</groupId>
       <artifactId>JXP</artifactId>
-      <version>1.0</version>
+      <version>1.1</version>
     </dependency>
 ```
 
@@ -20,9 +20,8 @@ Java XML Persistence API
 Creating the JxpBackend object:
 ```java
     JxpBackend jxp = new JxpBuilder()
-        .addListeners(new MyEventListener(), new CountryListener)
-        // map your XmlElement implementation to an XML tag name to have it instantiated automatically when creating a
-        // Context
+        .addListeners(new MyEventListener(), new CountryListener())
+        // map your XmlElement implementation to an XML tag name to have it instantiated automatically
         .mapClass("city", City.class)
         .mapClass("country", Country.class)
         .build();
@@ -68,11 +67,11 @@ Example:
 
     public class City extends AbstractXmlElement {
 
-        public City(String name, int population, Context context) {
-            super("city", buildAttributes(name, population), context);
+        public City(String name, int population) {
+            super("city", buildAttributes(name, population));
         }
 
-        // constructor invoked by DefaultPersistenceManager when creating a Context
+        // constructor invoked by DefaultPersistenceManager when instantiating a persistent XmlElement
         public City(Element element, Context context) {
             super(element, context);
         }
@@ -105,11 +104,11 @@ Example:
 
     public class Country extends AbstractXmlElement {
 
-        public Country(String name, String englishName, boolean sovereign, List<City> cities, Context context) {
-            super("country", buildAttributes(name, englishName, sovereign), Lists.newArrayList(cities), context);
+        public Country(String name, String englishName, boolean sovereign, List<City> cities) {
+            super("country", buildAttributes(name, englishName, sovereign), Lists.newArrayList(cities));
         }
 
-        // constructor invoked by DefaultPersistenceManager when creating a Context
+        // constructor invoked by DefaultPersistenceManager when instantiating a persistent XmlElement
         public Country(Element element, List<City> cities, Context context) {
             super(element, Lists.newArrayList(cities), context);
         }
@@ -132,8 +131,8 @@ Example:
 
 ## Context, JxpBackend and BindableContext
 
-The Context class represents an XML document and / or File and is used to make any changes to it. It stores all
-XmlElement instances of that document / file and applies changes to them by starting a Transaction, adding changes to it
+The Context class represents the context of an XML document and / or File and is used to make any changes to it. It stores all
+XmlElement instances (in case of a CachedContext) of that document / file and applies changes to them by starting a Transaction, adding changes to it
 and then commit it using the invoke() method. This is required for any action that creates, deletes or changes an
 XmlElement. BindableContext is a Context that can be bound to any object and can be retrieved from the JxpBackend using
 that object. The JxpBackend holds all Context instances created by it, all BindableContexts and all EventListeners.
@@ -160,15 +159,15 @@ The default option for both is true.
 
 The quickest way to add a new XmlElement to the file:
 ```java
-    context.invoke(() -> new Country("Italia", "Italy", true, Lists.newArrayList(rome, florence, venice), context).persist());
+    context.invoke(() -> new Country("Italia", "Italy", true, Lists.newArrayList(rome, florence, venice)).persist(context));
 ```
 
 Example:
 ```java
     Context context = contextManager.getContext();
     context.invoke(() -> {
-        Country ch = new Country("Schweiz", "Switzerland", true, Lists.newArrayList(this), context);
-        ch.persist();
+        Country ch = new Country("Schweiz", "Switzerland", true, Lists.newArrayList(this));
+        ch.persist(context);
 
         Country unitedKingdom = context.getElement("United Kingdom", Country.class);
         unitedKingdom.setAttribute("sovereign", Boolean.toString(true));
@@ -181,8 +180,9 @@ Example:
 Async example:
 ```java
     QueuedTask<Void> future = context.futureInvoke(() -> {
-        City london = new City("London", 8900000, context);
+        City london = new City("London", 8900000);
         context.requireElement("England").addSubElement(london);
+        Thread.sleep(100);
         return null;
     });
     new Thread(future).start();
@@ -193,6 +193,27 @@ Async example:
     System.out.println("Count " + count2 + ", expected: 1");
 
 ```
+
+## LazyContext, sequential Transactions and XPath Queries
+
+When working with huge XML files with millions of elements it might not be feasible to instantiate and store all XmlElements
+for the lifetime of the Context. LazyContext only stores XlmElement currently in state CONCEPTION or DELETION during the
+current Transaction until it's flushed. XmlElement instances are only instantiated upon calling Context#getElements and
+this each time it gets called, so you might need to manage storing them yourself when needed.
+
+Making a large amount of changes or creating millions of new elements in one transaction might require using a sequential
+Transaction using the Context#invokeSequential method to make sure the Transaction does not eat up your entire ram. This
+type of Transaction will flush, i.e. commit and clear all changes, itself each time the amount changes reaches the provided
+threshold.
+
+It is possible to only instantiate part of your document's elements if your ram does not allow storing all of them at any
+time using the Context#xPathQuery method, which will instantiate an XmlElement for each result it finds. The XQueryBuilder
+provides some convenient methods to generate an XPath query. In case of a CachedContext this method will not actually
+instantiate new XmlElements but match the results with the instances that are cached in the context but it's still faster
+to use the Queries described in the next section if the XmlElement instances are already stored somewhere
+(e.g. running a big XPath query over 6100000 elements takes up to 20 seconds while running a similar jxp query over a
+collection of XmlElements of the same size takes 12 milliseconds).
+
 ## Queries
 
 The Conditions class offers many static methods to build predicates to find XmlElements with. Use Context#query
@@ -205,19 +226,19 @@ List.
 
 Examples:
 ```java
-    XmlElement london = context.query(
+    City london = context.query(
             and(
                     attribute("population").greaterThan(800000),
                     subElementOf(england),
                     instanceOf(City.class),
                     textContent().isEmpty()
             )
-    ).requireOnlyResult();
+    , City.class).requireOnlyResult();
 ```
 ```java
-    Set<XmlElement> largeCities = Query.evaluate(attribute("population").greaterThan(8000000))
-        .execute(context.getElementsRecursive(), Collectors.toSet())
-        .collect();
+    Set<City> largeCities = Query.evaluate(attribute("population").greaterThan(8000000))
+        .execute(context.getElementsRecursive(), City.class)
+        .collect(Collectors.toSet());
 ```
 ```java
     context.invoke(() -> {
@@ -269,45 +290,76 @@ to invoke your task in a new Transaction after the current one has finished sinc
 changes anymore.
 
 ```java
-    /**
-     * Fired when an {@link ElementCreatedEvent} was applied
-     *
-     * @param event the ElementCreatedEvent
-     */
-    public void elementCreating(ElementCreatedEvent event) {
-    }
-
-    /**
-     * Fired when an {@link ElementDeletingEvent} was applied
-     *
-     * @param event the ElementDeletingEvent
-     */
-    public void elementDeleting(ElementDeletingEvent event) {
-    }
-
-    /**
-     * Fired when an {@link ElementChangingEvent} was applied
-     *
-     * @param event the ElementChangingEvent
-     */
-    public void elementChanging(ElementChangingEvent event) {
-    }
-
-    /**
-     * Fired after a {@link net.robinfriedli.jxp.persist.Transaction} has been applied (to the in memory elements)
-     *
-     * @param transaction the transaction that has been applied
-     */
-    public void transactionApplied(Transaction transaction) {
-    }
-
-    /**
-     * Fired after a {@link net.robinfriedli.jxp.persist.Transaction} has been committed (to the XML file)
-     *
-     * @param transaction the transaction that has been committed
-     */
-    public void transactionCommitted(Transaction transaction) {
-    }
+ public abstract class EventListener {
+ 
+     private final boolean mayInterrupt;
+ 
+     protected EventListener() {
+         this(false);
+     }
+ 
+     protected EventListener(boolean mayInterrupt) {
+         this.mayInterrupt = mayInterrupt;
+     }
+ 
+     /**
+      * Fired when an {@link ElementCreatedEvent} was applied
+      *
+      * @param event the ElementCreatedEvent
+      */
+     public void elementCreating(ElementCreatedEvent event) {
+     }
+ 
+     /**
+      * Fired when an {@link ElementDeletingEvent} was applied
+      *
+      * @param event the ElementDeletingEvent
+      */
+     public void elementDeleting(ElementDeletingEvent event) {
+     }
+ 
+     /**
+      * Fired when an {@link ElementChangingEvent} was applied
+      *
+      * @param event the ElementChangingEvent
+      */
+     public void elementChanging(ElementChangingEvent event) {
+     }
+ 
+     /**
+      * Fired after a {@link Transaction} has been applied (to the in memory elements)
+      *
+      * @param transaction the transaction that has been applied
+      */
+     public void transactionApplied(Transaction transaction) {
+     }
+ 
+     /**
+      * Fired after a {@link Transaction} has been committed (to the XML file). Note that this happens after the flush, so
+      * you can't access the changes committed by this transaction anymore. If you need to access these changes see
+      * {@link #onBeforeFlush(Transaction)}
+      *
+      * @param transaction the transaction that has been committed
+      */
+     public void transactionCommitted(Transaction transaction) {
+     }
+ 
+     /**
+      * Fired before a {@link Transaction} is flushed. Usually happens during a commit or during a {@link SequentialTx}.
+      *
+      * @param transaction the transaction that has been flushed
+      */
+     public void onBeforeFlush(Transaction transaction) {
+     }
+ 
+     /**
+      * the mayInterrupt parameter defines if an exception thrown by this listener should interrupt the transaction or
+      * be ignored
+      */
+     public boolean mayInterrupt() {
+         return mayInterrupt;
+     }
+ }
 ```
 
 ## StringConverter

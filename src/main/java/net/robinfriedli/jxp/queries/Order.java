@@ -1,7 +1,7 @@
 package net.robinfriedli.jxp.queries;
 
 import java.util.Comparator;
-import java.util.List;
+import java.util.stream.Stream;
 
 import javax.annotation.Nullable;
 
@@ -51,18 +51,15 @@ public class Order {
         return new Order(Direction.ASCENDING, Source.TEXT_CONTENT);
     }
 
-    public void applyOrder(List<XmlElement> elements) {
+    public <E extends XmlElement> Stream<E> applyOrder(Stream<E> resultStream) {
         Comparator<XmlElement> comparator = getComparator();
-        if (direction == Direction.DESCENDING) {
-            elements.sort(comparator.reversed());
-        } else {
-            elements.sort(comparator);
-        }
+        return resultStream.sorted(comparator);
     }
 
-    private Comparator<XmlElement> getComparator() {
+    public Comparator<XmlElement> getComparator() {
+        Comparator<XmlElement> comparator;
         if (source == Source.ATTRIBUTE) {
-            return Comparator.comparing(v -> {
+            comparator = Comparator.comparing(v -> {
                 if (v.hasAttribute(attribute)) {
                     return v.getAttribute(attribute).getValue();
                 } else {
@@ -70,7 +67,13 @@ public class Order {
                 }
             });
         } else {
-            return Comparator.comparing(XmlElement::getTextContent);
+            comparator = Comparator.comparing(XmlElement::getTextContent);
+        }
+
+        if (direction == Direction.DESCENDING) {
+            return comparator.reversed();
+        } else {
+            return comparator;
         }
     }
 

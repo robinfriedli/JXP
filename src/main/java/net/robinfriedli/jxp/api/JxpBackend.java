@@ -2,12 +2,15 @@ package net.robinfriedli.jxp.api;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import javax.annotation.Nullable;
+
+import org.slf4j.Logger;
 
 import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.events.ElementChangingEvent;
@@ -15,42 +18,38 @@ import net.robinfriedli.jxp.events.ElementCreatedEvent;
 import net.robinfriedli.jxp.events.ElementDeletingEvent;
 import net.robinfriedli.jxp.events.EventListener;
 import net.robinfriedli.jxp.exceptions.PersistException;
-import net.robinfriedli.jxp.persist.BindableContextImpl;
+import net.robinfriedli.jxp.logging.LoggerSupplier;
+import net.robinfriedli.jxp.persist.AbstractContext;
+import net.robinfriedli.jxp.persist.BindableCachedContext;
+import net.robinfriedli.jxp.persist.CachedContext;
 import net.robinfriedli.jxp.persist.Context;
-import net.robinfriedli.jxp.persist.ContextImpl;
-import net.robinfriedli.jxp.persist.DefaultPersistenceManager;
+import net.robinfriedli.jxp.persist.LazyContext;
 import net.robinfriedli.jxp.persist.Transaction;
 import org.w3c.dom.Document;
 
 public class JxpBackend {
 
-    private final DefaultPersistenceManager persistenceManager;
     private final List<Context> contexts;
     private final List<Context.BindableContext> boundContexts;
     private final List<EventListener> listeners;
-    private final Map<String, Class<? extends XmlElement>> instantiationContributions;
+    private final Logger logger;
+    private final DefaultContextType defaultContextType;
     private boolean listenersMuted = false;
 
-    public JxpBackend(DefaultPersistenceManager persistenceManager,
-                      List<EventListener> listeners,
-                      Map<String, Class<? extends XmlElement>> instantiationContributions) {
-        this.persistenceManager = persistenceManager;
-        this.contexts = Lists.newArrayList();
-        this.boundContexts = Lists.newArrayList();
-        this.listeners = listeners;
-        this.instantiationContributions = instantiationContributions;
+    public JxpBackend(List<EventListener> listeners,
+                      DefaultContextType defaultContextType) {
+        this(Lists.newArrayList(), Lists.newArrayList(), listeners, defaultContextType);
     }
 
-    public JxpBackend(DefaultPersistenceManager persistenceManager,
-                      List<Context> contexts,
+    public JxpBackend(List<Context> contexts,
                       List<Context.BindableContext> boundContexts,
                       List<EventListener> listeners,
-                      Map<String, Class<? extends XmlElement>> instantiationContributions) {
-        this.persistenceManager = persistenceManager;
+                      DefaultContextType defaultContextType) {
         this.contexts = contexts;
         this.boundContexts = boundContexts;
         this.listeners = listeners;
-        this.instantiationContributions = instantiationContributions;
+        this.defaultContextType = defaultContextType;
+        logger = LoggerSupplier.getLogger();
     }
 
     public List<Context> getContexts() {
@@ -71,9 +70,9 @@ public class JxpBackend {
         if (existingContext != null) {
             return existingContext;
         } else {
-            Context context = new ContextImpl(this, persistenceManager, document);
-            contexts.add(context);
-            return context;
+            Class[] parameterTypes = new Class[]{JxpBackend.class, Document.class, Logger.class};
+            Object[] parameters = new Object[]{this, document, logger};
+            return instantiateDefaultContextType(parameterTypes, parameters);
         }
     }
 
@@ -83,9 +82,9 @@ public class JxpBackend {
         if (existingContext != null) {
             return existingContext;
         } else {
-            Context context = new ContextImpl(this, persistenceManager, file);
-            contexts.add(context);
-            return context;
+            Class[] parameterTypes = new Class[]{JxpBackend.class, File.class, Logger.class};
+            Object[] parameters = new Object[]{this, file, logger};
+            return instantiateDefaultContextType(parameterTypes, parameters);
         }
     }
 
@@ -204,6 +203,54 @@ public class JxpBackend {
         return null;
     }
 
+    public Context createCachedContext(String path) {
+        return createCachedContext(new File(path));
+    }
+
+    public Context createCachedContext(Document document) {
+        if (hasContext(document)) {
+            throw new PersistException("Document " + document + " is already used by a Context");
+        }
+
+        Context cachedContext = new CachedContext(this, document, logger);
+        contexts.add(cachedContext);
+        return cachedContext;
+    }
+
+    public Context createCachedContext(File file) {
+        if (hasContext(file)) {
+            throw new PersistException("File " + file + " is already used by a Context");
+        }
+
+        Context cachedContext = new CachedContext(this, file, logger);
+        contexts.add(cachedContext);
+        return cachedContext;
+    }
+
+    public Context createLazyContext(String path) {
+        return createLazyContext(new File(path));
+    }
+
+    public Context createLazyContext(Document document) {
+        if (hasContext(document)) {
+            throw new PersistException("Document " + document + " is already used by a Context");
+        }
+
+        Context lazyContext = new LazyContext(this, document, logger);
+        contexts.add(lazyContext);
+        return lazyContext;
+    }
+
+    public Context createLazyContext(File file) {
+        if (hasContext(file)) {
+            throw new PersistException("File " + file + " is already used by Context");
+        }
+
+        Context lazyContext = new LazyContext(this, file, logger);
+        contexts.add(lazyContext);
+        return lazyContext;
+    }
+
     public <E> Context.BindableContext<E> createBoundContext(String path, E objectToBind) {
         return createBoundContext(new File(path), objectToBind);
     }
@@ -213,7 +260,7 @@ public class JxpBackend {
             throw new PersistException("Document " + document + " is already used by a Context");
         }
 
-        Context.BindableContext<E> context = new BindableContextImpl<>(this, persistenceManager, document, objectToBind);
+        Context.BindableContext<E> context = new BindableCachedContext<>(this, document, objectToBind, logger);
         boundContexts.add(context);
         return context;
     }
@@ -223,7 +270,7 @@ public class JxpBackend {
             throw new PersistException("File " + file + " is already used by a Context");
         }
 
-        Context.BindableContext<E> context = new BindableContextImpl<>(this, persistenceManager, file, objectToBind);
+        Context.BindableContext<E> context = new BindableCachedContext<>(this, file, objectToBind, logger);
         boundContexts.add(context);
         return context;
     }
@@ -280,14 +327,6 @@ public class JxpBackend {
         boundContexts.remove(context);
     }
 
-    public Map<String, Class<? extends XmlElement>> getInstantiationContributions() {
-        return instantiationContributions;
-    }
-
-    public void mapClass(String tagName, Class<? extends XmlElement> classToInstantiate) {
-        instantiationContributions.put(tagName, classToInstantiate);
-    }
-
     public void addListener(EventListener listener) {
         listeners.add(listener);
     }
@@ -296,12 +335,12 @@ public class JxpBackend {
         listeners.remove(listener);
     }
 
-    public void setListenersMuted(boolean listenersMuted) {
-        this.listenersMuted = listenersMuted;
-    }
-
     public boolean isListenersMuted() {
         return listenersMuted;
+    }
+
+    public void setListenersMuted(boolean listenersMuted) {
+        this.listenersMuted = listenersMuted;
     }
 
     public void fireElementCreating(ElementCreatedEvent event) {
@@ -324,16 +363,50 @@ public class JxpBackend {
         listeners.forEach(emit(listener -> listener.transactionCommitted(transaction)));
     }
 
+    public void fireOnBeforeFlush(Transaction transaction) {
+        listeners.forEach(emit(listener -> listener.onBeforeFlush(transaction)));
+    }
+
     private Consumer<EventListener> emit(Consumer<EventListener> consumer) {
         return listener -> {
             if (!listenersMuted) {
                 try {
                     consumer.accept(listener);
                 } catch (Throwable e) {
-                    System.err.println("One of the EventListeners had an uncaught exception:");
-                    e.printStackTrace();
+                    if (listener.mayInterrupt()) {
+                        throw e;
+                    } else {
+                        logger.error("One of the EventListeners had an uncaught exception", e);
+                    }
                 }
             }
         };
+    }
+
+    private Context instantiateDefaultContextType(Class[] parameterTypes, Object[] parameters) {
+        try {
+            Constructor<? extends AbstractContext> constructor
+                = defaultContextType.getContextType().getConstructor(parameterTypes);
+            Context context = constructor.newInstance(parameters);
+            contexts.add(context);
+            return context;
+        } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException e) {
+            throw new IllegalStateException("Exception instantiating default Context class", e);
+        }
+    }
+
+    public enum DefaultContextType {
+        CACHED(CachedContext.class), LAZY(LazyContext.class);
+
+        private final Class<? extends AbstractContext> contextType;
+
+        DefaultContextType(Class<? extends AbstractContext> contextType) {
+            this.contextType = contextType;
+        }
+
+        public Class<? extends AbstractContext> getContextType() {
+            return contextType;
+        }
+
     }
 }
