@@ -152,7 +152,7 @@ is necessary if the current Transaction is in a state where it is not recording 
 (For instant-apply transactions this is only required for the transactionCommitted event, otherwise no invoke method
 call is required at all). Alternatively, if there is no current Transaction, the method can still be used to invoke
 tasks asynchronously, in which case the implement has to execute the task at some point. futureInvoke has two additional
-boolean parameters after commit any instantApply: cancelOnFailure and triggerListeners. The first one is relevant when
+boolean parameters after commit and instantApply: cancelOnFailure and triggerListeners. The first one is relevant when
 queueing the task to the transaction and defines whether the task gets cancelled if the transaction fails (rolls back).
 triggerListeners defines whether the task will be executed within a normal invoke or invokeWithoutListeners if false.
 The default option for both is true.
@@ -212,17 +212,79 @@ provides some convenient methods to generate an XPath query. In case of a Cached
 instantiate new XmlElements but match the results with the instances that are cached in the context but it's still faster
 to use the Queries described in the next section if the XmlElement instances are already stored somewhere
 (e.g. running a big XPath query over 6100000 elements takes up to 20 seconds while running a similar jxp query over a
-collection of XmlElements of the same size takes 12 milliseconds).
+collection of XmlElements of the same size takes 12 milliseconds). Use the XConditions class to build nodes for the
+query. Note that JXP puts the tag name of the root element (so in this case "countries/") automatically, so when using
+XQueryBuilder#find you need to put the path starting from the first element after root.
 
+XPath Query Examples:
+```java
+XQuery query1 = XQueryBuilder.find("country").where(and(
+        or(
+                and(
+                        attribute("sovereign").is(false),
+                        attribute("englishName").startsWith("Eng"),
+                        attribute("name").contains("ngl"),
+                        attribute("name").endsWith("land")
+                ),
+                attribute("name").startsWith("United"),
+                attribute("englishName").endsWith("land")
+        ),
+        not(
+                and(
+                        attribute("name").startsWith("United"),
+                        attribute("name").endsWith("States")
+                )
+        )
+));
+String xPath1 = query1.getXPath(context);
+```
+
+```java
+XQuery query2 = XQueryBuilder.find("country/city").where(or(
+        and(
+                not(
+                        and(
+                                attribute("population").in(200000, 400000, 1000000, 8900000),
+                                attribute("name").in("Birmingham", "New York")
+                        )
+                ),
+                attribute("population").greaterThan(200000),
+                attribute("population").lowerThan(1000000)
+        ),
+        and(
+                or(
+                        attribute("population").greaterThan(8000000),
+                        attribute("population").lowerThan(1000000)
+                ),
+                attribute("name").in("London", "Manchester", "Birmingham"),
+                not(
+                        or(
+                                attribute("name").in("New York"),
+                                attribute("name").contains("ches"),
+                                attribute("name").endsWith("ham")
+                        )
+                )
+        )
+));
+String xPath2 = query2.getXPath(context);
+```
 ## Queries
 
 The Conditions class offers many static methods to build predicates to find XmlElements with. Use Context#query
-to run a query over a context's elements (including all subelements recursively), which returns a QueryResult<List<XmlElement>>,
+to run a query over a context's elements (including all subelements recursively), which returns a ResultStream<E>,
 or use the static method Query#evaluate to build a query and then run it over any Collection of XmlElements using the
-Query#execute method. Use Query#count to get the amount of results a query returns or
-Query#execute(Collection, Collector) to select what kind of Collection to collect the results with.
-You can also use QueryResult#order to order the results by an attribute or text content, if results were collected to a
-List.
+Query#execute method. Use ResultStream#count to get the amount of results a query returns or
+ResultStream#collect(Collector) to select what kind of Collection to collect the results with.
+You can also use Query#order (or later ResultStream#order) to order the results by an attribute or text content. Note
+that ResultStream operates on a Stream, meaning its methods (except #order and #getResultStream) terminate the stream
+and can only be invoked once. If you do need to invoke several of its methods for some reason you can collect it to a
+QueryResult<E, C> with ResultStream#getResult which offers similar methods but operates on the collected Collection of
+type C.
+
+This type of Query works with cached XmlElement instances and is recommended with CachedContexts as it performs much
+better than XPath Queries. In case of LazyContext however the XmlElement instances need to be instantiated for each query
+(unless they are cached in a collection by the implementer and the Query is executed with this collection) while XPath
+queries run over the Context's document and only instantiate the XmlElements based on the Elements the query returns.
 
 Examples:
 ```java
@@ -243,26 +305,26 @@ Examples:
 ```java
     context.invoke(() -> {
         if (Query.evaluate(attribute("name").is("France")).count(context.getElements()) == 0) {
-            City paris = new City("Paris", 2000000, context);
-            Country france = new Country("France", "France", true, Lists.newArrayList(paris), context);
-            france.persist();
+            City paris = new City("Paris", 2000000);
+            Country france = new Country("France", "France", true, Lists.newArrayList(paris));
+            france.persist(context);
         }
         if (Query.evaluate(attribute("englishName").startsWith("Swe")).count(context.getElements()) == 0) {
-            City stockholm = new City("Stockholm", 950000, context);
-            Country sweden = new Country("Sverige", "Sweden", true, Lists.newArrayList(stockholm), context);
-            sweden.persist();
+            City stockholm = new City("Stockholm", 950000);
+            Country sweden = new Country("Sverige", "Sweden", true, Lists.newArrayList(stockholm));
+            sweden.persist(context);
         }
     });
 ```
 ```java
     XmlElement london = Query.evaluate(attribute("population").greaterEquals(400000))
-            .execute(context.getElementsRecursive())
             .order(Order.attribute("name"))
+            .execute(context.getElementsRecursive())
             .requireFirstResult();
 
     XmlElement zurich = Query.evaluate(attribute("population").greaterEquals(400000))
-            .execute(context.getElementsRecursive())
             .order(Order.attribute("name", Order.Direction.DESCENDING))
+            .execute(context.getElementsRecursive())
             .requireFirstResult();
 ```
 
