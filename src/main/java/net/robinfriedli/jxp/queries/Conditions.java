@@ -55,4 +55,12 @@ public final class Conditions {
         return elem -> elem.getTagName().equals(tagName);
     }
 
+    public static Predicate<XmlElement> existsSubElement(Predicate<XmlElement> subPredicate) {
+        return and(XmlElement::hasSubElements, xmlElement -> xmlElement.getSubElements().stream().anyMatch(subPredicate));
+    }
+
+    public static Predicate<XmlElement> allSubElementsMatch(Predicate<XmlElement> subPredicate) {
+        return and(XmlElement::hasSubElements, xmlElement -> xmlElement.getSubElements().stream().allMatch(subPredicate));
+    }
+
 }

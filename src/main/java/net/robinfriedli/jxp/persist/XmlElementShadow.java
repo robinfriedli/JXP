@@ -20,7 +20,7 @@ import org.w3c.dom.Element;
  * Gets created after committing a new XmlElement or creating an XmlElement with {@link XmlElement.State#CLEAN}
  * (when loading all XmlElements on startup / initializing a {@link Context}) and is updated after committing an
  * {@link ElementChangingEvent}
- *
+ * <p>
  * Deprecated since v0.7, since the actual {@link Element} is now a field on the {@link XmlElement} that represents it,
  * eliminating the need to locate it.
  */

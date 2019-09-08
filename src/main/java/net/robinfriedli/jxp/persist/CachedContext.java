@@ -12,6 +12,11 @@ import net.robinfriedli.jxp.api.XmlElement;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
+/**
+ * Context implementation that stores all {@link XmlElement} instances for the entirety of its lifespan and never has
+ * to re-instantiate its XmlElements or re-parse its DOM document. This is ideal when performance is the main focus
+ * and memory is not too limited.
+ */
 public class CachedContext extends AbstractContext {
 
     private List<XmlElement> elements;
@@ -60,6 +65,16 @@ public class CachedContext extends AbstractContext {
     @Override
     protected List<XmlElement> handleXPathResults(List<Element> results) {
         return getElementsRecursive().stream().filter(element -> element.isPersisted() && results.contains(element.getElement())).collect(Collectors.toList());
+    }
+
+    @Override
+    protected Context instantiate(JxpBackend jxpBackend, Document document, Logger logger) {
+        return new CachedContext(jxpBackend, document, logger);
+    }
+
+    @Override
+    protected Context instantiate(JxpBackend jxpBackend, File document, Logger logger) {
+        return new CachedContext(jxpBackend, document, logger);
     }
 
 }

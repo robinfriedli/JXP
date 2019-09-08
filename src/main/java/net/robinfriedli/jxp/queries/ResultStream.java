@@ -25,7 +25,7 @@ public class ResultStream<E extends XmlElement> {
     private boolean terminated;
 
     public ResultStream(Stream<E> resultStream) {
-        this.resultStream = resultStream.onClose(() -> System.out.println("closed"));
+        this.resultStream = resultStream;
     }
 
     // terminating operations

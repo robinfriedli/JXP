@@ -31,7 +31,7 @@ public interface XmlElement {
     /**
      * Method used by {@link #addSubElement(XmlElement)} to append this subElement to a parent
      *
-     * @param context the context for the document to save to element to
+     * @param context   the context for the document to save to element to
      * @param newParent the parent element
      */
     void persist(Context context, XmlElement newParent);
@@ -46,10 +46,10 @@ public interface XmlElement {
      * Creates a new XmlElement with the attributes and text content of this one. This does not require a transaction as
      * it does not persist the copy
      *
-     * @param copySubElements also copies all subelements of this element
+     * @param copySubElements             also copies all subelements of this element
      * @param instantiateContributedClass tries to instantiate one of your classes contributed to the {@link JxpBackend}
-     * if none found or false returns a {@link BaseXmlElement}. Mind that your class has to have a constructor matching
-     * {@link BaseXmlElement} to be instantiated by this method.
+     *                                    if none found or false returns a {@link BaseXmlElement}. Mind that your class has to have a constructor matching
+     *                                    {@link BaseXmlElement} to be instantiated by this method.
      * @return the newly created XmlElement
      */
     XmlElement copy(boolean copySubElements, boolean instantiateContributedClass);
@@ -57,7 +57,7 @@ public interface XmlElement {
     /**
      * Removes the {@link Element} represented by this XmlElement from the XML document. Phantoms can be persisted again
      * by using the {@link #persist(Context)} method, or, for subElements, by adding it to a new parent using {@link #addSubElement(XmlElement)}
-     * after removing it from the old one
+     * after removing it from the old one. This method should generally just be used internally.
      */
     void phantomize();
 
@@ -91,7 +91,7 @@ public interface XmlElement {
     /**
      * Defines the parent of a subElement. This is not permitted if the element already has a parent, the element first
      * has to be removed from the old parent using {@link #removeSubElement(XmlElement)}. This method should generally
-     * only be used by the API.
+     * only be used internally.
      */
     void setParent(XmlElement parent);
 
@@ -122,15 +122,17 @@ public interface XmlElement {
 
     /**
      * @param attributeName name of attribute
-     * @return XmlAttribute instance with specified name
+     * @return XmlAttribute instance with specified name or a new {@link XmlAttribute.Provisional}
      */
     XmlAttribute getAttribute(String attributeName);
+
+    void addAttribute(XmlAttribute attribute);
 
     /**
      * Set existing attribute to a different value or create a new one.
      *
      * @param attribute XML attribute name to change
-     * @param value new value
+     * @param value     new value
      */
     void setAttribute(String attribute, Object value);
 
@@ -197,7 +199,7 @@ public interface XmlElement {
      * their original class rather than XmlElements. As of v1.1 an alias for method {@link #getInstancesOf(Class)}
      *
      * @param type Subclass of XmlElement you want to filter and cast the subElements to
-     * @param <E> target Type. Subclass of XmlElement
+     * @param <E>  target Type. Subclass of XmlElement
      * @return all filtered SubElements as instances of class E
      */
     <E extends XmlElement> List<E> getSubElementsWithType(Class<E> type);
@@ -248,7 +250,7 @@ public interface XmlElement {
 
     /**
      * Get the text content of the XML element.
-     *
+     * <p>
      * E.g. <element>textContent</element>
      *
      * @return text content of XML element
@@ -257,7 +259,7 @@ public interface XmlElement {
 
     /**
      * Set the text content of the XML element.
-     *
+     * <p>
      * E.g. <element>textContent</element>
      *
      * @param textContent to set
@@ -282,7 +284,7 @@ public interface XmlElement {
      * Check if an XmlElement already exists in the same {@link Context} and thus would result in a duplicate.
      * Ideally you should compare attributes that represent an id of some kind.
      * If you do not want to check your XmlElement for duplicates just return false.
-     *
+     * <p>
      * The default implementation in {@link AbstractXmlElement} checks if there is another XmlElement with the same
      * same tag and id returned by {@link #getId()}
      *
@@ -327,7 +329,7 @@ public interface XmlElement {
      *
      * @param change {@link ElementChangingEvent} to apply
      * @throws UnsupportedOperationException if source of event does not equal this XmlElement
-     * @throws PersistException if {@link Context} has no {@link net.robinfriedli.jxp.persist.Transaction}
+     * @throws PersistException              if {@link Context} has no {@link net.robinfriedli.jxp.persist.Transaction}
      */
     void applyChange(ElementChangingEvent change) throws UnsupportedOperationException, PersistException;
 
@@ -416,6 +418,8 @@ public interface XmlElement {
      */
     void lock();
 
+    void unlock();
+
     /**
      * @return true if this XmlElement is locked. See {@link #lock()}
      */
@@ -436,7 +440,7 @@ public interface XmlElement {
     /**
      * Get all subElements that are instance of {@link E}
      *
-     * @param c Class to check
+     * @param c   Class to check
      * @param <E> Type of Class to check
      * @return All Elements that are an instance of specified Class
      */
@@ -446,9 +450,9 @@ public interface XmlElement {
      * Get all subElements that are instance of {@link E}, ignoring elements that are instance of
      * any of the ignored subClasses. Used to exclude subclasses.
      *
-     * @param c Class to check
+     * @param c                 Class to check
      * @param ignoredSubClasses subclasses to exclude
-     * @param <E> Type to return
+     * @param <E>               Type to return
      * @return All Elements that are an instance of specified Class but not specified subclasses
      */
     <E extends XmlElement> List<E> getInstancesOf(Class<E> c, Class... ignoredSubClasses);
@@ -494,7 +498,7 @@ public interface XmlElement {
         /**
          * Unlike PHANTOM the Element has not actually been deleted yet and still exists in the XML document. This is
          * state of elements after the delete() method has been called but before the change has been committed.
-         *
+         * <p>
          * Physical is already false even though that is technically incorrect since this state is only temporary during
          * Transactions and we want to treat those element like phantoms. Even IF the element would get persisted again
          * in the same transaction, it would get persisted with all changes applied. Thus eliminating the need to commit

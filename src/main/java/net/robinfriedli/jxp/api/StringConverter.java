@@ -13,13 +13,13 @@ public class StringConverter {
     private static final List<StringConversionContribution<?>> stringConversions = Lists.newArrayList();
 
     static {
-        stringConversions.add(new StringConversionContribution<>(Integer.class, Integer::parseInt, Object::toString));
-        stringConversions.add(new StringConversionContribution<>(Double.class, Double::new, Object::toString));
-        stringConversions.add(new StringConversionContribution<>(Float.class, Float::new, Object::toString));
-        stringConversions.add(new StringConversionContribution<>(Long.class, Long::new, Object::toString));
-        stringConversions.add(new StringConversionContribution<>(Boolean.class, Boolean::new, Object::toString));
-        stringConversions.add(new StringConversionContribution<>(BigDecimal.class, BigDecimal::new, BigDecimal::toString));
-        stringConversions.add(new StringConversionContribution<>(String.class, String::toString, String::toString));
+        stringConversions.add(new StringConversionContribution<>(0, Integer.class, Integer::parseInt, Object::toString));
+        stringConversions.add(new StringConversionContribution<>(0D, Double.class, Double::new, Object::toString));
+        stringConversions.add(new StringConversionContribution<>(0F, Float.class, Float::new, Object::toString));
+        stringConversions.add(new StringConversionContribution<>(0L, Long.class, Long::new, Object::toString));
+        stringConversions.add(new StringConversionContribution<>(false, Boolean.class, Boolean::new, Object::toString));
+        stringConversions.add(new StringConversionContribution<>(BigDecimal.ZERO, BigDecimal.class, BigDecimal::new, BigDecimal::toString));
+        stringConversions.add(new StringConversionContribution<>("", String.class, String::toString, String::toString));
     }
 
 
@@ -43,14 +43,18 @@ public class StringConverter {
         }
     }
 
-    public static <V> void map(Class<V> targetClass, Function<String, V> conversionFunc, Function<V, String> reverseFunc) {
+    public static <V> void map(V emptyValue, Class<V> targetClass, Function<String, V> conversionFunc, Function<V, String> reverseFunc) {
         if (!canConvert(targetClass)) {
-            stringConversions.add(new StringConversionContribution<>(targetClass, conversionFunc, reverseFunc));
+            stringConversions.add(new StringConversionContribution<>(emptyValue, targetClass, conversionFunc, reverseFunc));
         }
     }
 
     public static boolean canConvert(Class target) {
         return stringConversions.stream().anyMatch(c -> c.getClassToConvert().equals(target));
+    }
+
+    public static <V> V getEmptyValue(Class<V> classToConvert) {
+        return getConverter(classToConvert).getEmptyValue();
     }
 
     @SuppressWarnings("unchecked")

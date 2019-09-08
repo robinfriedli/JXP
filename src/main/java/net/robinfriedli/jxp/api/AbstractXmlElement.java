@@ -262,20 +262,18 @@ public abstract class AbstractXmlElement implements XmlElement {
         } else if (foundAttributes.size() > 1) {
             throw new IllegalStateException("Duplicate attribute: " + attributeName + " on element " + toString());
         } else {
-            throw new IllegalStateException("No attribute " + attributeName + " on element " + toString());
+            return new XmlAttribute.Provisional(this, attributeName);
         }
     }
 
     @Override
+    public void addAttribute(XmlAttribute attribute) {
+        attributes.add(attribute);
+    }
+
+    @Override
     public void setAttribute(String attribute, Object value) {
-        XmlAttribute attributeToChange;
-        if (hasAttribute(attribute)) {
-            attributeToChange = getAttribute(attribute);
-        } else {
-            XmlAttribute newAttribute = new XmlAttribute(this, attribute);
-            attributes.add(newAttribute);
-            attributeToChange = newAttribute;
-        }
+        XmlAttribute attributeToChange = getAttribute(attribute);
         attributeToChange.setValue(value);
     }
 
@@ -590,6 +588,11 @@ public abstract class AbstractXmlElement implements XmlElement {
     @Override
     public void lock() {
         locked = true;
+    }
+
+    @Override
+    public void unlock() {
+        locked = false;
     }
 
     @Override

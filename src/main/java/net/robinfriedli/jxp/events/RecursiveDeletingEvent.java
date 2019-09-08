@@ -64,17 +64,6 @@ public class RecursiveDeletingEvent extends ElementDeletingEvent {
         }
     }
 
-    @Override
-    public void commit() {
-        getSource().phantomize();
-
-        if (!getRecursiveDeletingEvents().isEmpty()) {
-            getRecursiveDeletingEvents().forEach(RecursiveDeletingEvent::commit);
-        }
-
-        setCommitted(true);
-    }
-
     @Nullable
     public XmlElement getOldParent() {
         return oldParent;

@@ -11,7 +11,7 @@ Java XML Persistence API
     <dependency>
       <groupId>net.robinfriedli.JXP</groupId>
       <artifactId>JXP</artifactId>
-      <version>1.1</version>
+      <version>1.2</version>
     </dependency>
 ```
 
@@ -186,12 +186,28 @@ Async example:
         return null;
     });
     new Thread(future).start();
-    long count1 = Query.evaluate(attribute("name").is("London")).count(context.getElementsRecursive());
+    long count1 = Query.evaluate(attribute("name").is("London")).execute(context.getElementsRecursive()).count();
     System.out.println("Count " + count1 + ", expected: 0");
     future.get();
-    long count2 = Query.evaluate(attribute("name").is("London")).count(context.getElementsRecursive());
+    long count2 = Query.evaluate(attribute("name").is("London")).execute(context.getElementsRecursive()).count();
     System.out.println("Count " + count2 + ", expected: 1");
 
+```
+
+In the back the used parameters are used to build the mode the executed task will be wrapped in. For more advanced options
+you can create the mode yourself or even implement your own ModeWrapper to create additional modes the task may be invoked
+with.
+
+Example:
+```java
+Invoker.Mode mode = Invoker.Mode
+    .create()
+    .with(new ListenersMutedMode(context.getBackend()))
+    .with(AbstractTransactionalMode.Builder.create().setInstantApply(false).writeToFile(false).build(context));
+context.invoke(mode, () -> {
+    City zurich = context.requireElement("Zurich", City.class);
+    zurich.setAttribute("population", 410000);
+});
 ```
 
 ## LazyContext, sequential Transactions and XPath Queries
@@ -304,12 +320,12 @@ Examples:
 ```
 ```java
     context.invoke(() -> {
-        if (Query.evaluate(attribute("name").is("France")).count(context.getElements()) == 0) {
+        if (Query.evaluate(attribute("name").is("France")).execute(context.getElements()).count() == 0) {
             City paris = new City("Paris", 2000000);
             Country france = new Country("France", "France", true, Lists.newArrayList(paris));
             france.persist(context);
         }
-        if (Query.evaluate(attribute("englishName").startsWith("Swe")).count(context.getElements()) == 0) {
+        if (Query.evaluate(attribute("englishName").startsWith("Swe")).execute(context.getElements()).count() == 0) {
             City stockholm = new City("Stockholm", 950000);
             Country sweden = new Country("Sverige", "Sweden", true, Lists.newArrayList(stockholm));
             sweden.persist(context);

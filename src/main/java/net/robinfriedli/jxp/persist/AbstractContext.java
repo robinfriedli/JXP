@@ -2,7 +2,6 @@ package net.robinfriedli.jxp.persist;
 
 import java.io.File;
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -10,6 +9,9 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import javax.annotation.Nullable;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathExpressionException;
@@ -23,29 +25,33 @@ import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.exceptions.CommitException;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.exceptions.QueryException;
+import net.robinfriedli.jxp.exec.AbstractTransactionalMode;
+import net.robinfriedli.jxp.exec.Invoker;
+import net.robinfriedli.jxp.exec.InvokerImpl;
+import net.robinfriedli.jxp.exec.ListenersMutedMode;
+import net.robinfriedli.jxp.exec.QueuedTask;
+import net.robinfriedli.jxp.exec.SequentialMode;
 import net.robinfriedli.jxp.queries.Query;
 import net.robinfriedli.jxp.queries.ResultStream;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
+/**
+ * Default Context that implements all methods that are common between Context implementations
+ */
 public abstract class AbstractContext implements Context {
 
     private final JxpBackend backend;
-
     private final Logger logger;
 
     private Document document;
-
     private String path;
-
     private File file;
-
-    private Transaction transaction;
-
     private List<Transaction> uncommittedTransactions = Lists.newArrayList();
-
     private Object envVar;
+    private ThreadLocal<Transaction> threadTransaction = new ThreadLocal<>();
 
     public AbstractContext(JxpBackend backend, Document document, Logger logger) {
         this.backend = backend;
@@ -132,34 +138,38 @@ public abstract class AbstractContext implements Context {
     }
 
     @Override
-    public Context copy(String targetPath) {
-        if (!isPersistent()) {
-            throw new UnsupportedOperationException("Can only copy persistent Context");
+    public Context copy() {
+        try {
+            DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
+            DocumentBuilder documentBuilder = documentBuilderFactory.newDocumentBuilder();
+            Document document = documentBuilder.newDocument();
+            Node parent = document.importNode(this.document.getDocumentElement(), true);
+            document.appendChild(parent);
+
+            return instantiate(backend, document, logger);
+        } catch (ParserConfigurationException e) {
+            throw new PersistException("Exception while copying context", e);
         }
-
-        Document document = StaticXmlParser.parseDocument(file);
-        Context context = getClass().equals(CachedContext.class)
-            ? new CachedContext(backend, document, logger)
-            : new LazyContext(backend, document, logger);
-        backend.addContext(context);
-        context.persist(targetPath);
-
-        return context;
     }
 
     @Override
-    public <E> BindableContext<E> copy(String targetPath, E objectToBind) {
-        if (!isPersistent()) {
-            throw new UnsupportedOperationException("Can only copy persistent Context");
+    public <E> BindableContext<E> copy(E objectToBind) {
+        try {
+            DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
+            DocumentBuilder documentBuilder = documentBuilderFactory.newDocumentBuilder();
+            Document document = documentBuilder.newDocument();
+            Node parent = document.importNode(this.document.getDocumentElement(), true);
+            document.appendChild(parent);
+
+            return new BindableCachedContext<>(backend, document, objectToBind, logger);
+        } catch (ParserConfigurationException e) {
+            throw new PersistException("Exception while copying context", e);
         }
-
-        Document document = StaticXmlParser.parseDocument(file);
-        BindableContext<E> context = new BindableCachedContext<>(backend, document, objectToBind, logger);
-        backend.addBoundContext(context);
-        context.persist(targetPath);
-
-        return context;
     }
+
+    protected abstract Context instantiate(JxpBackend jxpBackend, Document document, Logger logger);
+
+    protected abstract Context instantiate(JxpBackend jxpBackend, File document, Logger logger);
 
     @Override
     public void reload() {
@@ -205,7 +215,7 @@ public abstract class AbstractContext implements Context {
 
     @Override
     public List<String> getUsedIds() {
-        return getElements().stream().map(XmlElement::getId).collect(Collectors.toList());
+        return getElementsRecursive().stream().map(XmlElement::getId).collect(Collectors.toList());
     }
 
     @Override
@@ -217,7 +227,7 @@ public abstract class AbstractContext implements Context {
     @Override
     @Nullable
     public <E extends XmlElement> E getElement(String id, Class<E> type) {
-        List<E> foundElements = getElements().stream()
+        List<E> foundElements = getElementsRecursive().stream()
             .filter(element -> type.isInstance(element) && element.getId() != null && element.getId().equals(id))
             .map(type::cast)
             .collect(Collectors.toList());
@@ -249,7 +259,7 @@ public abstract class AbstractContext implements Context {
 
     @Override
     public <E extends XmlElement> List<E> getInstancesOf(Class<E> c) {
-        return getElements().stream()
+        return getElementsRecursive().stream()
             .filter(c::isInstance)
             .map(c::cast)
             .collect(Collectors.toList());
@@ -257,7 +267,7 @@ public abstract class AbstractContext implements Context {
 
     @Override
     public <E extends XmlElement> List<E> getInstancesOf(Class<E> c, Class... ignoredSubClasses) {
-        return getElements().stream()
+        return getElementsRecursive().stream()
             .filter(elem -> c.isInstance(elem) && Arrays.stream(ignoredSubClasses).noneMatch(clazz -> clazz.isInstance(elem)))
             .map(c::cast)
             .collect(Collectors.toList());
@@ -338,8 +348,13 @@ public abstract class AbstractContext implements Context {
 
     @Override
     public <E> E invoke(boolean commit, boolean instantApply, Callable<E> task) {
-        Invoker invoker = new Invoker(this, logger);
-        return invoker.invoke(getMode(instantApply, false), 0, task);
+        return invoke(Invoker.Mode.create().with(getMode(instantApply, false).shouldCommit(commit)), task);
+    }
+
+    @Override
+    public <E> E invoke(Invoker.Mode mode, Callable<E> task) {
+        InvokerImpl invoker = new InvokerImpl();
+        return invoker.invoke(mode, task);
     }
 
     @Override
@@ -350,6 +365,14 @@ public abstract class AbstractContext implements Context {
     @Override
     public void invoke(boolean commit, boolean instantApply, Runnable task) {
         invoke(commit, instantApply, () -> {
+            task.run();
+            return null;
+        });
+    }
+
+    @Override
+    public void invoke(Invoker.Mode mode, Runnable task) {
+        invoke(mode, () -> {
             task.run();
             return null;
         });
@@ -382,13 +405,13 @@ public abstract class AbstractContext implements Context {
 
     @Override
     public <E> E invokeSequential(int sequence, Callable<E> task) {
-        Invoker invoker = new Invoker(this, logger);
-        return invoker.invoke(Invoker.Mode.SEQUENTIAL, sequence, task);
+        return invoke(Invoker.Mode.create().with(new SequentialMode(this, sequence)), task);
     }
 
     @Override
     public <E> QueuedTask<E> futureInvoke(boolean commit, boolean instantApply, boolean cancelOnFailure, boolean triggerListeners, Callable<E> callable) {
-        QueuedTask<E> queuedTask = new QueuedTask<>(this, commit, instantApply, cancelOnFailure, triggerListeners, callable);
+        QueuedTask<E> queuedTask = new QueuedTask<>(this, commit, instantApply, cancelOnFailure, triggerListeners, callable, logger);
+        Transaction transaction = threadTransaction.get();
         if (transaction != null) {
             transaction.queueTask(queuedTask);
         }
@@ -408,15 +431,10 @@ public abstract class AbstractContext implements Context {
 
     @Override
     public <E> E invokeWithoutListeners(boolean commit, boolean instantApply, Callable<E> callable) {
-        E retVal;
-        getBackend().setListenersMuted(true);
-        try {
-            retVal = invoke(commit, instantApply, callable);
-        } finally {
-            getBackend().setListenersMuted(false);
-        }
-
-        return retVal;
+        Invoker.Mode mode = Invoker.Mode.create()
+            .with(new ListenersMutedMode(getBackend()))
+            .with(getMode(instantApply, false).shouldCommit(commit));
+        return invoke(mode, callable);
     }
 
     @Override
@@ -439,30 +457,8 @@ public abstract class AbstractContext implements Context {
 
     @Override
     public void apply(boolean instantApply, Runnable task) {
-        // save the currently ongoing transaction
-        Transaction currentTx = transaction;
-        // switch to a different transaction
-        Invoker.Mode mode = getMode(instantApply, true);
-        try {
-            transaction = mode.getTransactionType().getConstructor(Context.class).newInstance(this);
-        } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException e) {
-            throw new PersistException("Exception creating transaction", e);
-        }
-
-        try {
-            task.run();
-        } catch (Throwable e) {
-            transaction = currentTx;
-            throw new PersistException(e.getClass().getName() + " thrown during task run. Closing transaction.", e);
-        }
-
-        if (!instantApply) {
-            transaction.apply();
-        } else {
-            getBackend().fireTransactionApplied(transaction);
-        }
-        // switch back to old transaction
-        transaction = currentTx;
+        Invoker.Mode mode = Invoker.Mode.create().with(getMode(instantApply, true));
+        invoke(mode, task);
     }
 
     @Override
@@ -483,16 +479,17 @@ public abstract class AbstractContext implements Context {
     @Override
     @Nullable
     public Transaction getTransaction() {
-        return transaction;
+        return threadTransaction.get();
     }
 
     @Override
     public void setTransaction(Transaction transaction) {
-        this.transaction = transaction;
+        threadTransaction.set(transaction);
     }
 
     @Override
     public Transaction getActiveTransaction() {
+        Transaction transaction = threadTransaction.get();
         if (transaction == null) {
             throw new PersistException("Context has no transaction. Use Context#invoke");
         }
@@ -505,20 +502,11 @@ public abstract class AbstractContext implements Context {
         return transaction;
     }
 
-    private Invoker.Mode getMode(boolean instantApply, boolean applyOnly) {
-        if (instantApply && applyOnly) {
-            return Invoker.Mode.INSTANT_APPLY_ONLY;
-        } else if (instantApply) {
-            return Invoker.Mode.INSTANT_APPLY;
-        } else if (applyOnly) {
-            return Invoker.Mode.APPLY_ONLY;
-        } else {
-            return Invoker.Mode.COLLECTING_APPLY;
-        }
-    }
-
-    private void closeTx() {
-        transaction = null;
+    private AbstractTransactionalMode getMode(boolean instantApply, boolean applyOnly) {
+        return AbstractTransactionalMode.Builder.create()
+            .setInstantApply(instantApply)
+            .setApplyOnly(applyOnly)
+            .build(this);
     }
 
 }

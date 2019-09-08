@@ -43,19 +43,19 @@ public class XmlAttribute {
     }
 
     public int getInt() {
-        return StringConverter.convert(value, Integer.class);
+        return getValue(Integer.class);
     }
 
     public boolean getBool() {
-        return StringConverter.convert(value, Boolean.class);
+        return getValue(Boolean.class);
     }
 
     public float getFloat() {
-        return StringConverter.convert(value, Float.class);
+        return getValue(Float.class);
     }
 
     public long getLong() {
-        return StringConverter.convert(value, Long.class);
+        return getValue(Long.class);
     }
 
     public void applyChange(AttributeChangingEvent change) throws UnsupportedOperationException {
@@ -85,6 +85,59 @@ public class XmlAttribute {
             value = change.getNewValue();
         }
         change.setApplied(true);
+    }
+
+    /**
+     * Used when {@link XmlElement#getAttribute(String)} is called for an attribute that does not exist on this element.
+     * This is a temporary XmlAttribute that is only added to the XmlElement instance once it is written to.
+     * This enables calling any of the #getValue methods on an attribute that does not exist on this element without
+     * an exception being thrown.
+     */
+    public static class Provisional extends XmlAttribute {
+
+        // the definitive attribute that was added to the XmlElement instance, should this attribute be written to
+        private XmlAttribute definitiveAttribute;
+
+        public Provisional(XmlElement parentElement, String attributeName) {
+            super(parentElement, attributeName);
+        }
+
+        @Override
+        public String getValue() {
+            if (definitiveAttribute == null) {
+                return "";
+            } else {
+                return definitiveAttribute.getValue();
+            }
+        }
+
+        @Override
+        public void setValue(Object value) {
+            if (definitiveAttribute == null) {
+                definitiveAttribute = new XmlAttribute(getParentElement(), getAttributeName());
+                getParentElement().addAttribute(definitiveAttribute);
+            }
+
+            definitiveAttribute.setValue(value);
+        }
+
+        @Override
+        public <V> V getValue(Class<V> target) {
+            if (definitiveAttribute == null) {
+                return StringConverter.getEmptyValue(target);
+            }
+            return definitiveAttribute.getValue(target);
+        }
+
+        @Override
+        public void applyChange(AttributeChangingEvent change) throws UnsupportedOperationException {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void revertChange(AttributeChangingEvent change) {
+            throw new UnsupportedOperationException();
+        }
     }
 
 }

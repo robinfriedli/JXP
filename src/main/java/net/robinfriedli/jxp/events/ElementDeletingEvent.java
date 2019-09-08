@@ -47,14 +47,13 @@ public class ElementDeletingEvent extends Event {
 
     @Override
     public void revert() {
-        if (isApplied()) {
-            if (!getSource().isSubElement()) {
+        if (isApplied() && !isCommitted()) {
+            if (oldParent == null) {
                 getSource().getContext().addElement(getSource());
             } else {
                 oldParent.getSubElements().add(getSource());
                 getSource().setParent(oldParent);
             }
-
 
             getSource().setState(oldState);
         }
@@ -68,7 +67,7 @@ public class ElementDeletingEvent extends Event {
             // re-persist the element in a new transaction queued after this one, this ensures that all other changes
             // made to this XmlElement will be reverted so that the XmlElement will be persisted in its former state
             context.futureInvoke(false, false, () -> {
-                getSource().persist(context);
+                getSource().persist(context, oldParent);
                 return null;
             });
         }
@@ -77,12 +76,11 @@ public class ElementDeletingEvent extends Event {
     @Override
     public void commit() {
         getSource().phantomize();
+        setCommitted(true);
 
         if (!recursiveDeletingEvents.isEmpty()) {
             recursiveDeletingEvents.forEach(RecursiveDeletingEvent::commit);
         }
-
-        setCommitted(true);
     }
 
     @Nullable

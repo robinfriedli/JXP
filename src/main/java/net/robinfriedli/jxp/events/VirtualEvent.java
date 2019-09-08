@@ -4,8 +4,9 @@ import java.util.List;
 
 import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.api.JxpBackend;
+import net.robinfriedli.jxp.exec.QueuedTask;
+import net.robinfriedli.jxp.persist.BaseTransaction;
 import net.robinfriedli.jxp.persist.Context;
-import net.robinfriedli.jxp.persist.QueuedTask;
 import net.robinfriedli.jxp.persist.Transaction;
 
 /**
@@ -29,7 +30,7 @@ public class VirtualEvent extends Event {
      * those to the actual Transaction. Used during a transaction to make changes to non-physical elements
      *
      * @param transaction the actual Transaction
-     * @param runnable the runnable in which the Events are created
+     * @param runnable    the runnable in which the Events are created
      */
     public static void interceptTransaction(Transaction transaction, Runnable runnable) {
         // if the transaction is apply-only VirtualEvents are not required anyway
@@ -82,7 +83,7 @@ public class VirtualEvent extends Event {
         return event.isCommitted();
     }
 
-    private static class TransactionMock extends Transaction {
+    private static class TransactionMock extends BaseTransaction {
 
         private List<VirtualEvent> virtualEvents;
         private boolean instantApply;
@@ -95,6 +96,7 @@ public class VirtualEvent extends Event {
 
         @Override
         public void addChange(Event event) {
+            isEmpty = false;
             VirtualEvent wrappedEvent = VirtualEvent.wrap(event);
             virtualEvents.add(wrappedEvent);
             if (instantApply) {

@@ -4,11 +4,16 @@ import net.robinfriedli.jxp.events.Event;
 import net.robinfriedli.jxp.exceptions.CommitException;
 import net.robinfriedli.jxp.exceptions.PersistException;
 
+/**
+ * Transaction extension that flushes and clears all changes each time the defined number of changes is reached.
+ * In case of a {@link LazyContext} this also clears stored created and deleted elements. Used to reduce memory usage
+ * for massive transactions.
+ */
 public class SequentialTx extends InstantApplyTx {
 
     private final int sequence;
 
-    public SequentialTx(Context context, Integer sequence) {
+    public SequentialTx(Context context, int sequence) {
         super(context);
         this.sequence = sequence;
     }

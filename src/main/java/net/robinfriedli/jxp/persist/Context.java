@@ -9,6 +9,8 @@ import javax.annotation.Nullable;
 
 import net.robinfriedli.jxp.api.JxpBackend;
 import net.robinfriedli.jxp.api.XmlElement;
+import net.robinfriedli.jxp.exec.Invoker;
+import net.robinfriedli.jxp.exec.QueuedTask;
 import net.robinfriedli.jxp.queries.Conditions;
 import net.robinfriedli.jxp.queries.QueryResult;
 import net.robinfriedli.jxp.queries.ResultStream;
@@ -16,9 +18,9 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
 /**
- * Main entry to the persistence layer. Represents an XML document and holds all its elements as {@link XmlElement}
- * instances. The {@link #invoke(boolean, boolean, Callable)} methods is mandatory for any action that creates, changes
- * or deletes an XmlElement.
+ * Interface for classes that represent and manage an XML file and provide access to its {@link XmlElement} instances.
+ * The {@link #invoke(Runnable)} methods enable an easy way to run a write transaction that may make changes to the
+ * XML file.
  */
 public interface Context extends AutoCloseable {
 
@@ -63,21 +65,20 @@ public interface Context extends AutoCloseable {
     void persist(String path);
 
     /**
-     * Copies the file of this Context to create a new one. Context must be persistent.
+     * Creates a new Context based on the DOM document of this context. Instantiates a new document and creates a deep
+     * copy of the root element of this document. The resulting Context is not yet stored to a file.
      *
-     * @param targetPath the path to copy the file
      * @return the newly create Context
      */
-    Context copy(String targetPath);
+    Context copy();
 
     /**
-     * Copies the file of this Context to create a new BoundContext. Context must be persistent.
+     * Copies this Context to create a new BoundContext.
      *
-     * @param targetPath the path to copy the file to
      * @param objectToBind the object to bind the new Context to
      * @return the newly created BindableContext
      */
-    <E> BindableContext<E> copy(String targetPath, E objectToBind);
+    <E> BindableContext<E> copy(E objectToBind);
 
     /**
      * Reloads the elements stored in this Context. This means all current XmlElement instances will be cleared and
@@ -130,9 +131,9 @@ public interface Context extends AutoCloseable {
      * Return an {@link XmlElement} saved in this Context where {@link XmlElement#getId()} matches the provided id and
      * is an instance of the provided class.
      *
-     * @param id to find the {@link XmlElement} with
+     * @param id   to find the {@link XmlElement} with
      * @param type target Class
-     * @param <E> Class extending {@link XmlElement}
+     * @param <E>  Class extending {@link XmlElement}
      * @return found {@link XmlElement} cast to target Class
      */
     @Nullable
@@ -154,7 +155,7 @@ public interface Context extends AutoCloseable {
     /**
      * Get all XmlElements saved in this Context that are instance of {@link E}
      *
-     * @param c Class to check
+     * @param c   Class to check
      * @param <E> Type of Class to check
      * @return All Elements that are an instance of specified Class
      */
@@ -164,9 +165,9 @@ public interface Context extends AutoCloseable {
      * Get all XmlElements saved in this Context that are instance of {@link E}, ignoring elements that are instance of
      * any of the ignored subClasses. Used to exclude subclasses.
      *
-     * @param c Class to check
+     * @param c                 Class to check
      * @param ignoredSubClasses subclasses to exclude
-     * @param <E> Type to return
+     * @param <E>               Type to return
      * @return All Elements that are an instance of specified Class but not specified subclasses
      */
     <E extends XmlElement> List<E> getInstancesOf(Class<E> c, Class... ignoredSubClasses);
@@ -244,30 +245,31 @@ public interface Context extends AutoCloseable {
     /**
      * Run a Callable in a {@link Transaction}. For any actions that create, change or delete an {@link XmlElement}.
      *
-     * @param commit defines if the changes will be committed to XML file immediately after applying or remain in Context
+     * @param commit       defines if the transaction will be committed to XML file immediately after running or remain as
+     *                     uncommitted transaction in the Context
      * @param instantApply defines whether the changes will be applied instantly or all at once after the task has run.
-     * e.g. if false, this code would return the old value of "attribute", not "newValue"
-     * <pre>
-     *     return context.invoke(true, false, () -> {
-     *         someElement.setAttribute("attribute", "newValue");
-     *         return someElement.geAttribute("attribute").getValue();
-     *     })
-     * </pre>
-     * however, disabling instantApply will improve performance when dealing with a large number of changes
-     * e.g. creating 100000 elements with id in an empty Context takes ~700 seconds without instantApply and ~820 seconds
-     * with it enabled. Note that creating the same amount of elements without an id (just return null in {@link XmlElement#getId()})
-     * takes < 1 second. So if you're planning on using massive files definitely don't use IDs. For a more detailed
-     * performance analysis see javadoc of {@link XmlElement#getId()}
-     * @param task any Callable
-     * @param <E> return type of Callable
+     *                     e.g. if false, this code would return the old value of "attribute", not "newValue"
+     *                     <pre>
+     *                          return context.invoke(true, false, () -> {
+     *                                  someElement.setAttribute("attribute", "newValue");
+     *                                  return someElement.geAttribute("attribute").getValue();
+     *                              })
+     *                     </pre>
+     *                     however, disabling instantApply might slightly improve performance when dealing with a large number of changes.
+     * @param task         any Callable
+     * @param <E>          return type of Callable
      * @return any Object of type E
-     *
-     * Notice: calling invoke() within the task will just use the outer transaction, meaning the parameters will be ignored.
-     * However, {@link #apply(boolean, Runnable)} can be called within an invoke() task, this saves the current transaction,
-     * creates an {@link ApplyOnlyTx}, applies it, and then switches back to the old transaction. The invoke() method only
-     * creates a new transaction if there isn't a current one
+     * <p>
+     * Notice: when calling this method within an invoked task with different parameters, i.e. a different mode, the
+     * context will switch to a new transaction an switch back after.
      */
     <E> E invoke(boolean commit, boolean instantApply, Callable<E> task);
+
+
+    /**
+     * Core invoke implementation that is called by each overloading method that runs the task in any given {@link Invoker.Mode}
+     */
+    <E> E invoke(Invoker.Mode mode, Callable<E> task);
 
     /**
      * same as {@link #invoke(boolean, boolean, Callable)} with commit = true and instantApply = true as default values
@@ -275,7 +277,7 @@ public interface Context extends AutoCloseable {
     <E> E invoke(Callable<E> task);
 
     /**
-     * Quickly execute a one-liner that requires a {@link Transaction} like
+     * Invoke a task without a return value
      * <p>
      * {@code context.invoke(() -> bla.setAttribute("name", "value"));}
      * <p>
@@ -292,9 +294,14 @@ public interface Context extends AutoCloseable {
      * A {@link Transaction} is required by any action that creates, changes or deletes an {@link XmlElement}
      *
      * @param commit defines if the changes will be committed to XML file immediately after applying or remain in Context
-     * @param task any Runnable
+     * @param task   any Runnable
      */
     void invoke(boolean commit, boolean instantApply, Runnable task);
+
+    /**
+     * Like {@link #invoke(Invoker.Mode, Callable)} but accepts a Runnable
+     */
+    void invoke(Invoker.Mode mode, Runnable task);
 
     /**
      * same as {@link #invoke(boolean, boolean, Runnable)} with commit = true and instantApply = true as default values
@@ -306,9 +313,9 @@ public interface Context extends AutoCloseable {
      * passed Object. For an explanation regarding envVar see {@link #getEnvVar()}.
      *
      * @param commit defines if the changes will be committed to XML file immediately after applying or remain in Context
-     * @param task any Callable
+     * @param task   any Callable
      * @param envVar any Object to set as envVar in Context
-     * @param <E> return type of Callable
+     * @param <E>    return type of Callable
      * @return any Object of type E
      */
     <E> E invoke(boolean commit, boolean instantApply, Callable<E> task, Object envVar);
@@ -318,7 +325,7 @@ public interface Context extends AutoCloseable {
      * passed Object. For an explanation regarding envVar see {@link #getEnvVar()}.
      *
      * @param commit defines if the changes will be committed to XML file immediately after applying or remain in Context
-     * @param task any Runnable
+     * @param task   any Runnable
      * @param envVar any Object to set as envVar in Context
      */
     void invoke(boolean commit, boolean instantApply, Runnable task, Object envVar);
@@ -335,22 +342,24 @@ public interface Context extends AutoCloseable {
     void invokeSequential(int sequence, Runnable task);
 
     /**
-     * A {@link #invoke(boolean, boolean, Callable)} implementation that will be executed asynchronously. This is
-     * required for tasks invoked after the Transaction has stopped recording but before the Transaction has been
-     * committed and closed. When this happens depends on whether it is an InstantApplyTx or not; if it is an
-     * InstantApplyTx the Transaction will keep recording and applying changes until {@link Transaction#commit()}
-     * is called, if it is not it's until {@link Transaction#apply()} is called. After that point changes can neither
-     * be added nor the regular invoke method can be used.
-     *
+     * A {@link #invoke(boolean, boolean, Callable)} implementation that will be executed in the future. This is
+     * applicable, although as of v1.2 no longer required, for tasks invoked after the Transaction has stopped recording
+     * but before the Transaction has been committed and closed. When this happens depends on whether it is an
+     * InstantApplyTx or not; if it is an InstantApplyTx the Transaction will keep recording and applying changes until
+     * {@link Transaction#commit()} is called, if it is not it's until {@link Transaction#apply()} is called.
+     * <p>
      * This is typically used in listeners (for InstantApplyTxs this is only required for the transaction committed
      * event) in which case the returned {@link QueuedTask} will be added to current Transaction and executed
      * after the Transaction is done. This method can also be used freely in which case the implementor decides when to
      * execute it.
+     * <p>
+     * If this is called within a transaction this task will added as a queued task to the transaction and run after
+     * the transaction finished. Else the implementor needs to start the task manually.
      *
-     * @param callable the callable to call in the future
-     * @param cancelOnFailure if the task has been queued to a transaction cancel it when the transaction fails
+     * @param callable         the callable to call in the future
+     * @param cancelOnFailure  if the task has been queued to a transaction cancel it when the transaction fails
      * @param triggerListeners trigger or mute listeners for the invoked task
-     * @param <E> the type the callable returns
+     * @param <E>              the type the callable returns
      * @return the {@link QueuedTask} that will be executed after the current Transaction is done automatically,
      * if called within Transaction (e.g EventListeners)
      */

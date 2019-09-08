@@ -4,6 +4,7 @@ package net.robinfriedli.jxp.events;
 import net.robinfriedli.jxp.persist.SequentialTx;
 import net.robinfriedli.jxp.persist.Transaction;
 
+@SuppressWarnings("unused")
 public abstract class EventListener {
 
     private final boolean mayInterrupt;

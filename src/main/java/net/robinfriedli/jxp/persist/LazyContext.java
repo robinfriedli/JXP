@@ -9,9 +9,18 @@ import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.api.JxpBackend;
 import net.robinfriedli.jxp.api.StaticXmlElementFactory;
 import net.robinfriedli.jxp.api.XmlElement;
+import net.robinfriedli.jxp.queries.xpath.XQueryBuilder;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
+/**
+ * Context implementation with focus on low memory usage. This context type only stores XmlElements in state CONCEPTION
+ * or DELETION during a Transaction until the next flush, meaning calls to #getElements or #query result in the XmlElement
+ * instances being instantiated. {@link Context#xPathQuery(String)} can be used in combination with this context type
+ * to only instantiate XmlElements based on the query result (see {@link XQueryBuilder} to build XPath queries).
+ * In combination with {@link Context#invokeSequential(int, Runnable)} this context allows for low memory usage when
+ * executing massive transactions.
+ */
 public class LazyContext extends AbstractContext {
 
     private final List<XmlElement> conceivedElements;
@@ -65,6 +74,16 @@ public class LazyContext extends AbstractContext {
         }
 
         return elementInstances;
+    }
+
+    @Override
+    protected Context instantiate(JxpBackend jxpBackend, Document document, Logger logger) {
+        return new LazyContext(jxpBackend, document, logger);
+    }
+
+    @Override
+    protected Context instantiate(JxpBackend jxpBackend, File document, Logger logger) {
+        return new LazyContext(jxpBackend, document, logger);
     }
 
 }

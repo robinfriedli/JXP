@@ -1,224 +1,168 @@
 package net.robinfriedli.jxp.persist;
 
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
-import java.util.stream.Collectors;
 
-import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.events.ElementChangingEvent;
 import net.robinfriedli.jxp.events.ElementCreatedEvent;
 import net.robinfriedli.jxp.events.ElementDeletingEvent;
 import net.robinfriedli.jxp.events.Event;
 import net.robinfriedli.jxp.exceptions.CommitException;
-import net.robinfriedli.jxp.exceptions.PersistException;
+import net.robinfriedli.jxp.exec.QueuedTask;
 
 /**
- * Holds all {@link Event}s that have been created within the current {@link Context#invoke(Callable)} method
- * call and applies them to the in memory elements after the Runnable / Callable is done and, if commit is true, saves
- * them to the XML file. Also reverts changes if the transaction failed.
+ * Interface for classes that manage running a write-transaction that applies changes to XmlElement instances, commits
+ * them to the DOM document and finally writes them to the file, if the Context is persistent.
  */
-public class Transaction {
+public interface Transaction {
 
-    private final Context context;
-    private final List<Event> changes;
-    private final List<QueuedTask> queuedTasks;
-    private boolean rollback = false;
-    private boolean failed = false;
-    private State state;
-
-    public Transaction(Context context) {
-        this.context = context;
-        this.changes = Lists.newArrayList();
-        state = State.RUNNING;
-        queuedTasks = Lists.newArrayList();
+    static Transaction createTx(Context context) {
+        return new BaseTransaction(context);
     }
 
-    public static Transaction createTx(Context context) {
-        return new Transaction(context);
-    }
-
-    public static ApplyOnlyTx createApplyOnlyTx(Context context) {
+    static ApplyOnlyTx createApplyOnlyTx(Context context) {
         return new ApplyOnlyTx(context);
     }
 
-    public static InstantApplyTx createInstantApplyTx(Context context) {
+    static InstantApplyTx createInstantApplyTx(Context context) {
         return new InstantApplyTx(context);
     }
 
-    public static InstantApplyOnlyTx createInstantApplyOnlyTx(Context context) {
+    static InstantApplyOnlyTx createInstantApplyOnlyTx(Context context) {
         return new InstantApplyOnlyTx(context);
     }
 
-    public Context getContext() {
-        return context;
+    Context getContext();
+
+    /**
+     * Capture a change, creation or deletion of an XmlElement
+     *
+     * @param change the event to add to this transaction
+     */
+    void addChange(Event change);
+
+    void addChanges(List<Event> changes);
+
+    void addChanges(Event... changes);
+
+    List<Event> getChanges();
+
+    /**
+     * @return all elements created in this transaction since the last flush
+     */
+    List<ElementCreatedEvent> getCreatedElements();
+
+    /**
+     * @return all element changes made in this transaction since the last flush
+     */
+    List<ElementChangingEvent> getElementChanges();
+
+    /**
+     * @param element the XmlElement instance to check
+     * @return all changes recorded for this XmlElement since the last flush
+     */
+    List<ElementChangingEvent> getChangesForElement(XmlElement element);
+
+    /**
+     * @return all elements for which changes were recorded since the last flush, i.e. in state TOUCHED
+     */
+    Set<XmlElement> getChangedElements();
+
+    /**
+     * @return all elements that were deleted since the last flush
+     */
+    List<ElementDeletingEvent> getDeletedElements();
+
+    /**
+     * @return all elements that were affected in any way, created, changed or deleted, since the last flush
+     */
+    Set<XmlElement> getAffectedElements();
+
+    /**
+     * @return true if the transaction failed an is rolling back
+     */
+    boolean isRollback();
+
+    /**
+     * Queue a task to run after this transaction finishes, used by {@link Context#futureInvoke(Callable)}
+     *
+     * @param queuedTask the queued task
+     */
+    void queueTask(QueuedTask queuedTask);
+
+    List<QueuedTask> getQueuedTasks();
+
+    /**
+     * Apply all recorded changes to XmlElement instances. In case of an {@link InstantApplyTx} each event is applied as
+     * soon as it's added to the transaction. Else this is called after the task finished, meaning changes are not visible
+     * during the task.
+     */
+    void apply();
+
+    /**
+     * Flushes all recorded changes and, if the Context is persistent, writes to the file.
+     *
+     * @param writeToFile whether the changes should be written to the file afterwards if necessary
+     */
+    void commit(boolean writeToFile) throws CommitException;
+
+    default void commit() throws CommitException {
+        commit(true);
     }
 
-    public void addChange(Event change) {
-        if (isActive()) {
-            changes.add(change);
-        } else {
-            throw new IllegalStateException("Transaction is not recording changes");
-        }
-    }
+    /**
+     * Flushes changes to the DOM document and clears recorded changes. Regularly this happens during the commit but in
+     * case of a {@link SequentialTx} this can happen several times during the transaction. This does not write to the
+     * file.
+     */
+    void flush() throws CommitException;
 
-    public void addChanges(List<Event> changes) {
-        if (isActive()) {
-            this.changes.addAll(changes);
-        } else {
-            throw new IllegalStateException("Transaction is not recording changes");
-        }
-    }
+    /**
+     * Revert all changes when the transaction fails and prevents it from being committed
+     */
+    void rollback();
 
-    public void addChanges(Event... changes) {
-        addChanges(Arrays.asList(changes));
-    }
+    /**
+     * Roll back the transaction if not already rolling back
+     */
+    void assertRollback();
 
-    public List<Event> getChanges() {
-        return changes;
-    }
+    /**
+     * @return true if this is an apply-only transaction, meaning no commit is made, since 0.7 this is largely deprecated,
+     * see {@link ApplyOnlyTx}
+     */
+    boolean isApplyOnly();
 
-    public List<ElementCreatedEvent> getCreatedElements() {
-        return changes.stream()
-            .filter(change -> change instanceof ElementCreatedEvent)
-            .map(change -> (ElementCreatedEvent) change)
-            .collect(Collectors.toList());
-    }
+    /**
+     * @return true if this transaction applies changes as soon as they are added, see {@link InstantApplyTx}
+     */
+    boolean isInstantApply();
 
-    public List<ElementChangingEvent> getElementChanges() {
-        return changes.stream()
-            .filter(change -> change instanceof ElementChangingEvent)
-            .map(change -> (ElementChangingEvent) change)
-            .collect(Collectors.toList());
-    }
+    /**
+     * @return true if this transaction can still be used to make additional changes
+     */
+    boolean isActive();
 
-    public List<ElementChangingEvent> getChangesForElement(XmlElement element) {
-        return getElementChanges().stream().filter(change -> change.getSource() == element).collect(Collectors.toList());
-    }
+    /**
+     * @return true if no change has ever been recorded by this transaction, even before the last flush
+     */
+    boolean isEmpty();
 
-    public Set<XmlElement> getChangedElements() {
-        return getElementChanges().stream().map(Event::getSource).collect(Collectors.toSet());
-    }
+    /**
+     * @return the state if the transaction
+     */
+    State getState();
 
-    public List<ElementDeletingEvent> getDeletedElements() {
-        return changes.stream()
-            .filter(change -> change instanceof ElementDeletingEvent)
-            .map(change -> (ElementDeletingEvent) change)
-            .collect(Collectors.toList());
-    }
+    void setState(State state);
 
-    public Set<XmlElement> getAffectedElements() {
-        return changes.stream().map(Event::getSource).collect(Collectors.toSet());
-    }
+    /**
+     * set the status of this transaction to failed, relevant for queued tasks
+     */
+    void fail();
 
-    public boolean isRollback() {
-        return rollback;
-    }
-
-    public void queueTask(QueuedTask queuedTask) {
-        queuedTasks.add(queuedTask);
-    }
-
-    public List<QueuedTask> getQueuedTasks() {
-        return queuedTasks;
-    }
-
-    public void apply() {
-        setState(State.APPLYING);
-        for (Event change : changes) {
-            try {
-                change.apply();
-            } catch (PersistException | UnsupportedOperationException e) {
-                rollback();
-                throw new PersistException("Exception while applying transaction. Rolled back.", e);
-            }
-        }
-
-        setState(State.APPLIED);
-        context.getBackend().fireTransactionApplied(this);
-    }
-
-    public void commit() throws CommitException {
-        if (!isRollback()) {
-            setState(State.COMMITTING);
-            flush();
-
-            if (context.isPersistent()) {
-                StaticXmlParser.writeToFile(context);
-            }
-
-            setState(State.COMMITTED);
-            context.getBackend().fireTransactionCommitted(this);
-        } else {
-            throw new CommitException("Cannot commit transaction that was rolled back");
-        }
-    }
-
-    void flush() throws CommitException {
-        context.getBackend().fireOnBeforeFlush(this);
-        try {
-            for (Event change : changes) {
-                if (change.isApplied()) {
-                    change.commit();
-                } else {
-                    throw new CommitException("Trying to commit a change that has not been applied.");
-                }
-            }
-        } catch (Throwable e) {
-            rollback();
-            throw new CommitException("Exception during commit. Transaction rolled back.", e);
-        } finally {
-            changes.clear();
-            if (context instanceof LazyContext) {
-                ((LazyContext) context).clear();
-            }
-        }
-    }
-
-    void rollback() {
-        setState(State.ROLLING_BACK);
-        rollback = true;
-        fail();
-        // reverse list so that the first change added is the last one to get rolled back to restore data step by step correctly
-        Collections.reverse(changes);
-        changes.forEach(Event::revert);
-        setState(State.ROLLED_BACK);
-    }
-
-    public boolean isApplyOnly() {
-        return this instanceof ApplyOnlyTx || this instanceof InstantApplyOnlyTx;
-    }
-
-    public boolean isInstantApply() {
-        return this instanceof InstantApplyTx;
-    }
-
-    public boolean isActive() {
-        if (isInstantApply()) {
-            return getState().isUseable();
-        } else {
-            return getState() == State.RUNNING;
-        }
-    }
-
-    public State getState() {
-        return state;
-    }
-
-    public void setState(State state) {
-        this.state = state;
-    }
-
-    public void fail() {
-        failed = true;
-    }
-
-    public boolean failed() {
-        return failed;
-    }
+    boolean failed();
 
     enum State {
 

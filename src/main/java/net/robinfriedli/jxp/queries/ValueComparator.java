@@ -36,11 +36,9 @@ public final class ValueComparator {
     public <E> Predicate<XmlElement> is(E value) {
         if (value instanceof String) {
             return predicate(value::equals);
-        } else if (StringConverter.canConvert(value.getClass())) {
+        } else {
             return predicate(val -> StringConverter.convert(val, value.getClass()).equals(value));
         }
-
-        throw new IllegalArgumentException("No type conversion available for class " + value.getClass().getSimpleName());
     }
 
     public Predicate<XmlElement> fuzzyIs(String s) {
@@ -52,11 +50,9 @@ public final class ValueComparator {
     public final <E> Predicate<XmlElement> in(E... values) {
         if (values instanceof String[]) {
             return predicate(value -> Arrays.asList((String[]) values).contains(value));
-        } else if (StringConverter.canConvert(values.getClass().getComponentType())) {
+        } else {
             return predicate(value -> Arrays.asList(values).contains(StringConverter.convert(value, values.getClass().getComponentType())));
         }
-
-        throw new IllegalArgumentException("No type conversion available for class " + values.getClass().getSimpleName());
     }
 
     public Predicate<XmlElement> isEmpty() {

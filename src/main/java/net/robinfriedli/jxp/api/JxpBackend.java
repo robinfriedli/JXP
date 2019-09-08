@@ -2,8 +2,6 @@ package net.robinfriedli.jxp.api;
 
 import java.io.File;
 import java.io.IOException;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -19,7 +17,6 @@ import net.robinfriedli.jxp.events.ElementDeletingEvent;
 import net.robinfriedli.jxp.events.EventListener;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.logging.LoggerSupplier;
-import net.robinfriedli.jxp.persist.AbstractContext;
 import net.robinfriedli.jxp.persist.BindableCachedContext;
 import net.robinfriedli.jxp.persist.CachedContext;
 import net.robinfriedli.jxp.persist.Context;
@@ -34,7 +31,7 @@ public class JxpBackend {
     private final List<EventListener> listeners;
     private final Logger logger;
     private final DefaultContextType defaultContextType;
-    private boolean listenersMuted = false;
+    private ThreadLocal<Boolean> listenersMuted = ThreadLocal.withInitial(() -> false);
 
     public JxpBackend(List<EventListener> listeners,
                       DefaultContextType defaultContextType) {
@@ -64,27 +61,37 @@ public class JxpBackend {
         return getContext(new File(path));
     }
 
+    /**
+     * @param document the DOM document
+     * @return either the existing Context for this document that is attached to this JxpBackend instance or a new
+     * Context that will be attached to this JxpBackend
+     */
     public Context getContext(Document document) {
         Context existingContext = getExistingContext(document);
 
         if (existingContext != null) {
             return existingContext;
         } else {
-            Class[] parameterTypes = new Class[]{JxpBackend.class, Document.class, Logger.class};
-            Object[] parameters = new Object[]{this, document, logger};
-            return instantiateDefaultContextType(parameterTypes, parameters);
+            Context context = defaultContextType.getContext(this, document, logger);
+            contexts.add(context);
+            return context;
         }
     }
 
+    /**
+     * @param file the XML file
+     * @return either the existing Context for this file that is attached to this JxpBackend instance or a new Context
+     * that will be attached to this JxpBackend
+     */
     public Context getContext(File file) {
         Context existingContext = getExistingContext(file);
 
         if (existingContext != null) {
             return existingContext;
         } else {
-            Class[] parameterTypes = new Class[]{JxpBackend.class, File.class, Logger.class};
-            Object[] parameters = new Object[]{this, file, logger};
-            return instantiateDefaultContextType(parameterTypes, parameters);
+            Context context = defaultContextType.getContext(this, file, logger);
+            contexts.add(context);
+            return context;
         }
     }
 
@@ -93,6 +100,10 @@ public class JxpBackend {
         return getExistingContext(new File(path));
     }
 
+    /**
+     * @param document the DOM document
+     * @return the existing Context for this document that is attached to this JxpBackend
+     */
     @Nullable
     public Context getExistingContext(Document document) {
         List<Context> found = contexts.stream().filter(c -> c.getDocument().equals(document)).collect(Collectors.toList());
@@ -106,6 +117,10 @@ public class JxpBackend {
         return null;
     }
 
+    /**
+     * @param file the XML file
+     * @return the existing Context for this XML file that is attached to this JxpBackend
+     */
     @Nullable
     public Context getExistingContext(File file) {
         List<Context> found = contexts
@@ -156,10 +171,18 @@ public class JxpBackend {
         return hasContext(new File(path));
     }
 
+    /**
+     * @param document the DOM document
+     * @return true if this JxpBackend has an attached Context for this DOM document
+     */
     public boolean hasContext(Document document) {
         return contexts.stream().anyMatch(c -> c.getDocument().equals(document));
     }
 
+    /**
+     * @param file the XML file
+     * @return true if this JxpBackend has an attached Context for this XML file
+     */
     public boolean hasContext(File file) {
         return contexts.stream().anyMatch(c -> {
             try {
@@ -170,11 +193,14 @@ public class JxpBackend {
         });
     }
 
+    /**
+     * @param boundObject the mapped object
+     * @return true if this JxpBackend has a Context mapped to this object
+     */
     public boolean hasBoundContext(Object boundObject) {
         return boundContexts.stream().anyMatch(ctx -> ctx.getBindingObject().equals(boundObject));
     }
 
-    @SuppressWarnings("unchecked")
     public <E> Context.BindableContext<E> requireBoundContext(E boundObject) {
         Context.BindableContext<E> boundContext = getBoundContext(boundObject);
 
@@ -185,6 +211,11 @@ public class JxpBackend {
         }
     }
 
+    /**
+     * @param boundObject the mapped object
+     * @param <E>         the type of the object
+     * @return the Context mapped to the provided object
+     */
     @SuppressWarnings("unchecked")
     @Nullable
     public <E> Context.BindableContext<E> getBoundContext(E boundObject) {
@@ -203,52 +234,60 @@ public class JxpBackend {
         return null;
     }
 
-    public Context createCachedContext(String path) {
+    public CachedContext createCachedContext(String path) {
         return createCachedContext(new File(path));
     }
 
-    public Context createCachedContext(Document document) {
-        if (hasContext(document)) {
-            throw new PersistException("Document " + document + " is already used by a Context");
-        }
-
-        Context cachedContext = new CachedContext(this, document, logger);
-        contexts.add(cachedContext);
-        return cachedContext;
+    /**
+     * Create a new CachedContext without attaching it to this JxpBackend. This allows several contexts for the same
+     * document in different threads, which is only safe for read-only operations, so be careful not to have threads override
+     * changes made by a different thread.
+     *
+     * @param document the document to create a context for
+     * @return the created cached context
+     */
+    public CachedContext createCachedContext(Document document) {
+        return new CachedContext(this, document, logger);
     }
 
-    public Context createCachedContext(File file) {
-        if (hasContext(file)) {
-            throw new PersistException("File " + file + " is already used by a Context");
-        }
-
-        Context cachedContext = new CachedContext(this, file, logger);
-        contexts.add(cachedContext);
-        return cachedContext;
+    /**
+     * Create a new CachedContext without attaching it to this JxpBackend. This allows several contexts for the same
+     * file in different threads, which is only safe for read-only operations, so be careful not to have threads override
+     * changes made by a different thread.
+     *
+     * @param file the file to create a context for
+     * @return the created cached context
+     */
+    public CachedContext createCachedContext(File file) {
+        return new CachedContext(this, file, logger);
     }
 
-    public Context createLazyContext(String path) {
+    public LazyContext createLazyContext(String path) {
         return createLazyContext(new File(path));
     }
 
-    public Context createLazyContext(Document document) {
-        if (hasContext(document)) {
-            throw new PersistException("Document " + document + " is already used by a Context");
-        }
-
-        Context lazyContext = new LazyContext(this, document, logger);
-        contexts.add(lazyContext);
-        return lazyContext;
+    /**
+     * Create a new LazyContext without attaching it to this JxpBackend. This allows several contexts for the same
+     * file in different threads, which is only safe for read-only operations, so be careful not to have threads override
+     * changes made by a different thread.
+     *
+     * @param document the document to create a context for
+     * @return the created lazy context
+     */
+    public LazyContext createLazyContext(Document document) {
+        return new LazyContext(this, document, logger);
     }
 
-    public Context createLazyContext(File file) {
-        if (hasContext(file)) {
-            throw new PersistException("File " + file + " is already used by Context");
-        }
-
-        Context lazyContext = new LazyContext(this, file, logger);
-        contexts.add(lazyContext);
-        return lazyContext;
+    /**
+     * Create a new LazyContext without attaching it to this JxpBackend. This allows several contexts for the same
+     * file in different threads, which is only safe for read-only operations, so be careful not to have threads override
+     * changes made by a different thread.
+     *
+     * @param file the file to create a context for
+     * @return the created lazy context
+     */
+    public LazyContext createLazyContext(File file) {
+        return new LazyContext(this, file, logger);
     }
 
     public <E> Context.BindableContext<E> createBoundContext(String path, E objectToBind) {
@@ -256,36 +295,42 @@ public class JxpBackend {
     }
 
     public <E> Context.BindableContext<E> createBoundContext(Document document, E objectToBind) {
-        if (hasContext(document)) {
-            throw new PersistException("Document " + document + " is already used by a Context");
-        }
-
-        Context.BindableContext<E> context = new BindableCachedContext<>(this, document, objectToBind, logger);
-        boundContexts.add(context);
-        return context;
+        return new BindableCachedContext<>(this, document, objectToBind, logger);
     }
 
+    /**
+     * Create a new BoundContext without attaching it to this JxpBackend. This allows several contexts for the same
+     * file in different threads, which is only safe for read-only operations, so be careful not to have threads override
+     * changes made by a different thread.
+     *
+     * @param file the file to create a context for
+     * @return the created bound context
+     */
     public <E> Context.BindableContext<E> createBoundContext(File file, E objectToBind) {
-        if (hasContext(file)) {
-            throw new PersistException("File " + file + " is already used by a Context");
-        }
-
-        Context.BindableContext<E> context = new BindableCachedContext<>(this, file, objectToBind, logger);
-        boundContexts.add(context);
-        return context;
+        return new BindableCachedContext<>(this, file, objectToBind, logger);
     }
 
-    public void addContext(Context context) {
+    /**
+     * Attach a Context that was create using one of the createContext methods or manually to this JxpBackend, ensuring
+     * only one context exists for the same file / document and enabling it being returned by the getContext method
+     *
+     * @param context the context to attach
+     */
+    public void attachContext(Context context) {
         if (context.isPersistent() && hasContext(context.getFile())) {
             throw new PersistException("There already is a Context for file " + context.getFile());
         } else if (hasContext(context.getDocument())) {
             throw new PersistException("There already is a Context for document " + context.getDocument());
         }
 
-        contexts.add(context);
+        if (context instanceof Context.BindableContext) {
+            boundContexts.add((Context.BindableContext) context);
+        } else {
+            contexts.add(context);
+        }
     }
 
-    public void addBoundContext(Context.BindableContext context) {
+    public void attachContext(Context.BindableContext context) {
         if (hasBoundContext(context.getBindingObject())) {
             throw new PersistException("There already is a Context bound to object equal to " + context.getBindingObject());
         }
@@ -322,6 +367,10 @@ public class JxpBackend {
         }
     }
 
+    public void removeContext(Context.BindableContext context) {
+        boundContexts.remove(context);
+    }
+
     public <E> void removeBoundContext(E boundObject) {
         Context.BindableContext<E> context = requireBoundContext(boundObject);
         boundContexts.remove(context);
@@ -336,11 +385,11 @@ public class JxpBackend {
     }
 
     public boolean isListenersMuted() {
-        return listenersMuted;
+        return listenersMuted.get();
     }
 
     public void setListenersMuted(boolean listenersMuted) {
-        this.listenersMuted = listenersMuted;
+        this.listenersMuted.set(listenersMuted);
     }
 
     public void fireElementCreating(ElementCreatedEvent event) {
@@ -369,7 +418,7 @@ public class JxpBackend {
 
     private Consumer<EventListener> emit(Consumer<EventListener> consumer) {
         return listener -> {
-            if (!listenersMuted) {
+            if (!listenersMuted.get()) {
                 try {
                     consumer.accept(listener);
                 } catch (Throwable e) {
@@ -383,30 +432,35 @@ public class JxpBackend {
         };
     }
 
-    private Context instantiateDefaultContextType(Class[] parameterTypes, Object[] parameters) {
-        try {
-            Constructor<? extends AbstractContext> constructor
-                = defaultContextType.getContextType().getConstructor(parameterTypes);
-            Context context = constructor.newInstance(parameters);
-            contexts.add(context);
-            return context;
-        } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException e) {
-            throw new IllegalStateException("Exception instantiating default Context class", e);
-        }
-    }
-
     public enum DefaultContextType {
-        CACHED(CachedContext.class), LAZY(LazyContext.class);
 
-        private final Class<? extends AbstractContext> contextType;
+        CACHED() {
+            @Override
+            public Context getContext(JxpBackend jxpBackend, File file, Logger logger) {
+                return new CachedContext(jxpBackend, file, logger);
+            }
 
-        DefaultContextType(Class<? extends AbstractContext> contextType) {
-            this.contextType = contextType;
-        }
+            @Override
+            public Context getContext(JxpBackend jxpBackend, Document document, Logger logger) {
+                return new CachedContext(jxpBackend, document, logger);
+            }
+        },
 
-        public Class<? extends AbstractContext> getContextType() {
-            return contextType;
-        }
+        LAZY() {
+            @Override
+            public Context getContext(JxpBackend jxpBackend, File file, Logger logger) {
+                return new LazyContext(jxpBackend, file, logger);
+            }
+
+            @Override
+            public Context getContext(JxpBackend jxpBackend, Document document, Logger logger) {
+                return new LazyContext(jxpBackend, document, logger);
+            }
+        };
+
+        public abstract Context getContext(JxpBackend jxpBackend, File file, Logger logger);
+
+        public abstract Context getContext(JxpBackend jxpBackend, Document document, Logger logger);
 
     }
 }

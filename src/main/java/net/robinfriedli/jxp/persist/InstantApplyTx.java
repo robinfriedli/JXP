@@ -7,9 +7,10 @@ import net.robinfriedli.jxp.events.Event;
 
 /**
  * A transaction that applies all changes as soon as they are added rather than after the task finished. Useful if the
- * changes are needed instantly but negatively affects performance. See {@link Context#invoke(boolean, boolean, Callable)}
+ * changes are needed instantly but might negatively affect performance ever so slightly.
+ * See {@link Context#invoke(boolean, boolean, Callable)}
  */
-public class InstantApplyTx extends Transaction {
+public class InstantApplyTx extends BaseTransaction {
 
     public InstantApplyTx(Context context) {
         super(context);
@@ -28,6 +29,12 @@ public class InstantApplyTx extends Transaction {
 
     @Override
     public void apply() {
-        throw new UnsupportedOperationException("Calling apply() not allowed on " + getClass().getName());
+        setState(State.APPLIED);
+        getContext().getBackend().fireTransactionApplied(this);
+    }
+
+    @Override
+    public boolean isInstantApply() {
+        return true;
     }
 }
