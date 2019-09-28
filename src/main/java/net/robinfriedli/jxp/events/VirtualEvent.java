@@ -29,23 +29,28 @@ public class VirtualEvent extends Event {
      * Swaps the current Transaction for a TransactionMock that wraps each added Event into a VirtualEvent, then adds
      * those to the actual Transaction. Used during a transaction to make changes to non-physical elements
      *
-     * @param transaction the actual Transaction
-     * @param runnable    the runnable in which the Events are created
+     * @param runnable the runnable in which the Events are created
      */
-    public static void interceptTransaction(Transaction transaction, Runnable runnable) {
+    public static void interceptTransaction(Runnable runnable, Context context) {
+        Transaction transaction = context.getTransaction();
         // if the transaction is apply-only VirtualEvents are not required anyway
-        if (!transaction.isApplyOnly()) {
-            Context context = transaction.getContext();
+        if (transaction == null || !transaction.isApplyOnly()) {
             List<VirtualEvent> virtualEvents = Lists.newArrayList();
-            TransactionMock transactionMock = new TransactionMock(context, virtualEvents, transaction.isInstantApply());
+            TransactionMock transactionMock = new TransactionMock(context, virtualEvents, transaction == null || transaction.isInstantApply());
 
             context.setTransaction(transactionMock);
             runnable.run();
-            transaction.getChanges().addAll(virtualEvents);
+            if (transaction != null) {
+                transaction.getChanges().addAll(virtualEvents);
+            }
 
             if (!transactionMock.getQueuedTasks().isEmpty()) {
                 for (QueuedTask queuedTask : transactionMock.getQueuedTasks()) {
-                    transaction.queueTask(queuedTask);
+                    if (transaction != null) {
+                        transaction.queueTask(queuedTask);
+                    } else {
+                        queuedTask.run();
+                    }
                 }
             }
 

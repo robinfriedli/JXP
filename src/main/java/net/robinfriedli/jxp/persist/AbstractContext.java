@@ -26,11 +26,11 @@ import net.robinfriedli.jxp.exceptions.CommitException;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.exceptions.QueryException;
 import net.robinfriedli.jxp.exec.AbstractTransactionalMode;
+import net.robinfriedli.jxp.exec.BaseInvoker;
 import net.robinfriedli.jxp.exec.Invoker;
-import net.robinfriedli.jxp.exec.InvokerImpl;
-import net.robinfriedli.jxp.exec.ListenersMutedMode;
 import net.robinfriedli.jxp.exec.QueuedTask;
-import net.robinfriedli.jxp.exec.SequentialMode;
+import net.robinfriedli.jxp.exec.modes.ListenersMutedMode;
+import net.robinfriedli.jxp.exec.modes.SequentialMode;
 import net.robinfriedli.jxp.queries.Query;
 import net.robinfriedli.jxp.queries.ResultStream;
 import org.w3c.dom.Document;
@@ -353,8 +353,8 @@ public abstract class AbstractContext implements Context {
 
     @Override
     public <E> E invoke(Invoker.Mode mode, Callable<E> task) {
-        InvokerImpl invoker = new InvokerImpl();
-        return invoker.invoke(mode, task);
+        BaseInvoker invoker = new BaseInvoker();
+        return invoker.invoke(mode, task, e -> new RuntimeException("Exception in task", e));
     }
 
     @Override

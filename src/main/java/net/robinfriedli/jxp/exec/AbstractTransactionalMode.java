@@ -3,19 +3,20 @@ package net.robinfriedli.jxp.exec;
 import java.util.List;
 import java.util.concurrent.Callable;
 
-import javax.annotation.Nullable;
-
 import net.robinfriedli.jxp.exceptions.PersistException;
+import net.robinfriedli.jxp.exec.modes.ApplyOnlyMode;
+import net.robinfriedli.jxp.exec.modes.CollectingApplyMode;
+import net.robinfriedli.jxp.exec.modes.InstantApplyMode;
+import net.robinfriedli.jxp.exec.modes.InstantApplyOnlyMode;
 import net.robinfriedli.jxp.persist.Context;
 import net.robinfriedli.jxp.persist.Transaction;
 
-public abstract class AbstractTransactionalMode implements Invoker.ModeWrapper {
+public abstract class AbstractTransactionalMode extends AbstractDelegatingModeWrapper {
 
     private final Context context;
     private Transaction activeTransaction;
     private Transaction newTransaction;
     private Transaction oldTransaction;
-    private Invoker.ModeWrapper delegate;
     private boolean shouldCommit = true;
     private boolean writeToFile = true;
 
@@ -70,23 +71,6 @@ public abstract class AbstractTransactionalMode implements Invoker.ModeWrapper {
 
             return returnValue;
         };
-    }
-
-    @Override
-    public Invoker.ModeWrapper combine(Invoker.ModeWrapper mode) {
-        setDelegate(mode);
-        return mode;
-    }
-
-    @Nullable
-    @Override
-    public Invoker.ModeWrapper getDelegate() {
-        return delegate;
-    }
-
-    @Override
-    public void setDelegate(Invoker.ModeWrapper delegate) {
-        this.delegate = delegate;
     }
 
     public AbstractTransactionalMode shouldCommit(boolean shouldCommit) {

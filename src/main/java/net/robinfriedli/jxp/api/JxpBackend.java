@@ -14,7 +14,7 @@ import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.events.ElementChangingEvent;
 import net.robinfriedli.jxp.events.ElementCreatedEvent;
 import net.robinfriedli.jxp.events.ElementDeletingEvent;
-import net.robinfriedli.jxp.events.EventListener;
+import net.robinfriedli.jxp.events.JxpEventListener;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.logging.LoggerSupplier;
 import net.robinfriedli.jxp.persist.BindableCachedContext;
@@ -28,19 +28,19 @@ public class JxpBackend {
 
     private final List<Context> contexts;
     private final List<Context.BindableContext> boundContexts;
-    private final List<EventListener> listeners;
+    private final List<JxpEventListener> listeners;
     private final Logger logger;
     private final DefaultContextType defaultContextType;
     private ThreadLocal<Boolean> listenersMuted = ThreadLocal.withInitial(() -> false);
 
-    public JxpBackend(List<EventListener> listeners,
+    public JxpBackend(List<JxpEventListener> listeners,
                       DefaultContextType defaultContextType) {
         this(Lists.newArrayList(), Lists.newArrayList(), listeners, defaultContextType);
     }
 
     public JxpBackend(List<Context> contexts,
                       List<Context.BindableContext> boundContexts,
-                      List<EventListener> listeners,
+                      List<JxpEventListener> listeners,
                       DefaultContextType defaultContextType) {
         this.contexts = contexts;
         this.boundContexts = boundContexts;
@@ -376,11 +376,11 @@ public class JxpBackend {
         boundContexts.remove(context);
     }
 
-    public void addListener(EventListener listener) {
+    public void addListener(JxpEventListener listener) {
         listeners.add(listener);
     }
 
-    public void removeListener(EventListener listener) {
+    public void removeListener(JxpEventListener listener) {
         listeners.remove(listener);
     }
 
@@ -416,7 +416,7 @@ public class JxpBackend {
         listeners.forEach(emit(listener -> listener.onBeforeFlush(transaction)));
     }
 
-    private Consumer<EventListener> emit(Consumer<EventListener> consumer) {
+    private Consumer<JxpEventListener> emit(Consumer<JxpEventListener> consumer) {
         return listener -> {
             if (!listenersMuted.get()) {
                 try {

@@ -1,5 +1,6 @@
-package net.robinfriedli.jxp.exec;
+package net.robinfriedli.jxp.exec.modes;
 
+import net.robinfriedli.jxp.exec.AbstractTransactionalMode;
 import net.robinfriedli.jxp.persist.BaseTransaction;
 import net.robinfriedli.jxp.persist.Context;
 import net.robinfriedli.jxp.persist.Transaction;
