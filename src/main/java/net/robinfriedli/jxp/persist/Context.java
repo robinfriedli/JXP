@@ -9,6 +9,7 @@ import javax.annotation.Nullable;
 
 import net.robinfriedli.jxp.api.JxpBackend;
 import net.robinfriedli.jxp.api.XmlElement;
+import net.robinfriedli.jxp.events.JxpEventListener;
 import net.robinfriedli.jxp.exec.Invoker;
 import net.robinfriedli.jxp.exec.QueuedTask;
 import net.robinfriedli.jxp.queries.Conditions;
@@ -413,7 +414,7 @@ public interface Context extends AutoCloseable {
      * The environment variable is set when using either method {@link #invoke(boolean, boolean, Callable, Object)}
      * {@link #invoke(boolean, boolean, Runnable, Object)}
      * <p>
-     * E.g. say you're developing a Discord bot and you've implemented an {@link net.robinfriedli.jxp.events.EventListener} that sends a message
+     * E.g. say you're developing a Discord bot and you've implemented an {@link JxpEventListener} that sends a message
      * after an Element has been added. In this case you could set the MessageChannel the command came from as envVar
      * to send the message to the right channel.
      *

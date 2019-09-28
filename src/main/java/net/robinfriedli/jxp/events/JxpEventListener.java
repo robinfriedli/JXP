@@ -1,19 +1,21 @@
 package net.robinfriedli.jxp.events;
 
 
+import java.util.EventListener;
+
 import net.robinfriedli.jxp.persist.SequentialTx;
 import net.robinfriedli.jxp.persist.Transaction;
 
 @SuppressWarnings("unused")
-public abstract class EventListener {
+public abstract class JxpEventListener implements EventListener {
 
     private final boolean mayInterrupt;
 
-    protected EventListener() {
+    protected JxpEventListener() {
         this(false);
     }
 
-    protected EventListener(boolean mayInterrupt) {
+    protected JxpEventListener(boolean mayInterrupt) {
         this.mayInterrupt = mayInterrupt;
     }
 

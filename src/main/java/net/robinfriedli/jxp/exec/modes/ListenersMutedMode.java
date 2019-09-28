@@ -1,15 +1,13 @@
-package net.robinfriedli.jxp.exec;
+package net.robinfriedli.jxp.exec.modes;
 
 import java.util.concurrent.Callable;
 
-import javax.annotation.Nullable;
-
 import net.robinfriedli.jxp.api.JxpBackend;
+import net.robinfriedli.jxp.exec.AbstractDelegatingModeWrapper;
 
-public class ListenersMutedMode implements Invoker.ModeWrapper {
+public class ListenersMutedMode extends AbstractDelegatingModeWrapper {
 
     private final JxpBackend jxpBackend;
-    private Invoker.ModeWrapper delegate;
 
     public ListenersMutedMode(JxpBackend jxpBackend) {
         this.jxpBackend = jxpBackend;
@@ -28,20 +26,4 @@ public class ListenersMutedMode implements Invoker.ModeWrapper {
         };
     }
 
-    @Override
-    public Invoker.ModeWrapper combine(Invoker.ModeWrapper mode) {
-        setDelegate(mode);
-        return mode;
-    }
-
-    @Nullable
-    @Override
-    public Invoker.ModeWrapper getDelegate() {
-        return delegate;
-    }
-
-    @Override
-    public void setDelegate(Invoker.ModeWrapper delegate) {
-        this.delegate = delegate;
-    }
 }

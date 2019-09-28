@@ -2,8 +2,11 @@ package net.robinfriedli.jxp.exec;
 
 import java.util.Iterator;
 import java.util.concurrent.Callable;
+import java.util.function.Function;
 
 import javax.annotation.Nullable;
+
+import net.robinfriedli.jxp.exec.modes.ExecutionMode;
 
 /**
  * Executor that manages running tasks within a transaction
@@ -18,7 +21,27 @@ public interface Invoker {
      * @param <E>  the return type of the callable
      * @return the result of the callable
      */
-    <E> E invoke(Mode mode, Callable<E> task);
+    <E> E invoke(Mode mode, Callable<E> task) throws Exception;
+
+    /**
+     * Same as {@link #invoke(Mode, Callable)} but accepts a Runnable and does not throw a checked exception as Runnables
+     * cannot throw checked exceptions
+     */
+    void invoke(Mode mode, Runnable runnable);
+
+    /**
+     * Runs the task with the given mode applied and handles checked exceptions by wrapping them into runtime exceptions
+     * using the given function.
+     *
+     * @param exceptionMapper the function that returns a runtime exception based on the caught checked exception
+     */
+    <E> E invoke(Mode mode, Callable<E> task, Function<Exception, RuntimeException> exceptionMapper);
+
+    /**
+     * Runs the task wrapping checked exceptions into {@link RuntimeException}. This is equivalent to calling
+     * <code>invoke(mode, task, e -> new RuntimeException(e))</code>
+     */
+    <E> E invokeChecked(Mode mode, Callable<E> task);
 
     /**
      * Applies a mode to a task by wrapping the task in a new callable. When iterating over the mode it unwraps the

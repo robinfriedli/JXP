@@ -6,6 +6,7 @@ import java.util.concurrent.FutureTask;
 
 import org.slf4j.Logger;
 
+import net.robinfriedli.jxp.exec.modes.ListenersMutedMode;
 import net.robinfriedli.jxp.persist.Context;
 
 public class QueuedTask<E> extends FutureTask<E> {

@@ -11,7 +11,7 @@ Java XML Persistence API
     <dependency>
       <groupId>net.robinfriedli.JXP</groupId>
       <artifactId>JXP</artifactId>
-      <version>1.2</version>
+      <version>1.2.1</version>
     </dependency>
 ```
 
@@ -356,7 +356,7 @@ a change is known to fail (e.g. (before v0.7) because the affected XmlElement is
 apply-only Transaction to make sure the change never gets committed and commit the change manually using the XmlPersister.
 You can get the XmlPersister via context.getPersistenceManager().getXmlPersister()
 
-## EventListener
+## JxpEventListener
 
 The EventListener offers 3 methods that get fired when the corresponding Event gets applied plus 2 collecting events
 for when a Transaction gets applied or committed. If the transaction is an InstantApplyTx transactionApplied gets fired
@@ -368,15 +368,24 @@ to invoke your task in a new Transaction after the current one has finished sinc
 changes anymore.
 
 ```java
- public abstract class EventListener {
+ package net.robinfriedli.jxp.events;
+ 
+ 
+ import java.util.EventListener;
+ 
+ import net.robinfriedli.jxp.persist.SequentialTx;
+ import net.robinfriedli.jxp.persist.Transaction;
+ 
+ @SuppressWarnings("unused")
+ public abstract class JxpEventListener implements EventListener {
  
      private final boolean mayInterrupt;
  
-     protected EventListener() {
+     protected JxpEventListener() {
          this(false);
      }
  
-     protected EventListener(boolean mayInterrupt) {
+     protected JxpEventListener(boolean mayInterrupt) {
          this.mayInterrupt = mayInterrupt;
      }
  

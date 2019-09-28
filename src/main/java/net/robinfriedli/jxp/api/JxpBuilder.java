@@ -8,22 +8,22 @@ import java.util.Set;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
-import net.robinfriedli.jxp.events.EventListener;
+import net.robinfriedli.jxp.events.JxpEventListener;
 import org.w3c.dom.Document;
 
 public class JxpBuilder {
 
-    private List<EventListener> listeners = Lists.newArrayList();
+    private List<JxpEventListener> listeners = Lists.newArrayList();
     private Set<File> contextFiles = Sets.newHashSet();
     private Set<Document> contextDocuments = Sets.newHashSet();
     private JxpBackend.DefaultContextType defaultContextType = JxpBackend.DefaultContextType.CACHED;
 
-    public JxpBuilder addListeners(EventListener... listeners) {
+    public JxpBuilder addListeners(JxpEventListener... listeners) {
         this.listeners.addAll(Arrays.asList(listeners));
         return this;
     }
 
-    public JxpBuilder addListeners(Collection<EventListener> listeners) {
+    public JxpBuilder addListeners(Collection<JxpEventListener> listeners) {
         this.listeners.addAll(listeners);
         return this;
     }

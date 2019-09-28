@@ -7,10 +7,10 @@ import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.events.ElementChangingEvent;
 import net.robinfriedli.jxp.events.ElementCreatedEvent;
 import net.robinfriedli.jxp.events.ElementDeletingEvent;
-import net.robinfriedli.jxp.events.EventListener;
+import net.robinfriedli.jxp.events.JxpEventListener;
 
 /**
- * Manager to retrieve {@link Context} and register {@link EventListener}s
+ * Manager to retrieve {@link Context} and register {@link JxpEventListener}s
  */
 @Deprecated
 public class ContextManager {
@@ -19,7 +19,7 @@ public class ContextManager {
 
     private final Context context;
 
-    private final List<EventListener> listeners;
+    private final List<JxpEventListener> listeners;
 
     private final List<Context.BindableContext> boundContexts = Lists.newArrayList();
 
@@ -27,7 +27,7 @@ public class ContextManager {
         this(path, persistenceManager, Lists.newArrayList());
     }
 
-    public ContextManager(String path, DefaultPersistenceManager persistenceManager, List<EventListener> listeners) {
+    public ContextManager(String path, DefaultPersistenceManager persistenceManager, List<JxpEventListener> listeners) {
         /*this.path = path;
         this.listeners = listeners;
         this.context = new ContextImpl(this, persistenceManager, path);*/
@@ -42,7 +42,7 @@ public class ContextManager {
                               E bindingObject,
                               String id,
                               DefaultPersistenceManager persistenceManager,
-                              List<EventListener> listeners) {
+                              List<JxpEventListener> listeners) {
         /*this.path = path;
         this.listeners = listeners;
         this.context = new ContextImpl(this, persistenceManager, path);
@@ -74,11 +74,11 @@ public class ContextManager {
         boundContexts.remove(bindableContext);
     }
 
-    public void addListener(EventListener listener) {
+    public void addListener(JxpEventListener listener) {
         listeners.add(listener);
     }
 
-    public void removeListener(EventListener listener) {
+    public void removeListener(JxpEventListener listener) {
         listeners.remove(listener);
     }
 

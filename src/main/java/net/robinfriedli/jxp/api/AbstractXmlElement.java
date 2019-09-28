@@ -296,8 +296,7 @@ public abstract class AbstractXmlElement implements XmlElement {
             if (state.isPhysical()) {
                 elements.forEach(elem -> elem.persist(context, this));
             } else {
-                VirtualEvent.interceptTransaction(context.getActiveTransaction(),
-                    () -> elements.forEach(elem -> elem.persist(context, this)));
+                VirtualEvent.interceptTransaction(() -> elements.forEach(elem -> elem.persist(context, this)), context);
             }
         }
     }
@@ -325,7 +324,7 @@ public abstract class AbstractXmlElement implements XmlElement {
             if (state.isPhysical()) {
                 elements.forEach(XmlElement::delete);
             } else {
-                VirtualEvent.interceptTransaction(context.getActiveTransaction(), () -> elements.forEach(XmlElement::delete));
+                VirtualEvent.interceptTransaction(() -> elements.forEach(XmlElement::delete), context);
             }
         }
     }
@@ -458,7 +457,7 @@ public abstract class AbstractXmlElement implements XmlElement {
     @Override
     public void addChange(ElementChangingEvent change) {
         if (!isLocked()) {
-            if (isDetached()) {
+            if (isDetached() || !state.isPhysical()) {
                 applyChange(change);
             } else {
                 Transaction transaction = context.getActiveTransaction();
