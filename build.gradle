@@ -1,0 +1,50 @@
+plugins {
+    id "java"
+    id "maven-publish"
+    id "com.jfrog.bintray" version "1.8.4"
+}
+
+repositories {
+    mavenCentral()
+    jcenter()
+}
+
+dependencies {
+    compile "com.google.guava:guava:25.1-jre"
+    compile "org.seleniumhq.selenium:selenium-support:3.14.0"
+    compile "org.slf4j:slf4j-api:1.7.26"
+    compile "net.robinfriedli:StringList:1.5"
+}
+
+group = "net.robinfriedli"
+version = "1.3"
+description = "JXP"
+sourceCompatibility = "8"
+
+task sourceJar(type: Jar) {
+    classifier 'sources'
+    from sourceSets.main.allJava
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            groupId rootProject.group
+            artifactId "JXP"
+
+            from(components.java)
+
+            artifact tasks.sourceJar
+        }
+    }
+}
+
+bintray {
+    user = "robinfriedli"
+    key = "3b8ae70ea2867ddb2f512a63fecdccc5fce1dc6a"
+    publications = ['maven']
+    pkg {
+        repo = rootProject.group
+        name = "JXP"
+    }
+}
