@@ -3,33 +3,6 @@ Java XML Persistence API
 
 ## Maven
 ```xml
-    <dependency>
-      <groupId>net.robinfriedli</groupId>
-      <artifactId>JXP</artifactId>
-      <version>1.3</version>
-      <type>pom</type>
-    </dependency>
-
-    <repository>
-        <id>jcenter</id>
-        <name>jcenter-bintray</name>
-        <url>https://jcenter.bintray.com</url>
-    </repository>
-```
-
-## Gradle
-```gradle
-    dependencies {
-        compile 'net.robinfriedli:JXP:1.3'
-    }
-
-    repositories {
-        jcenter()
-    }
-```
-
-## Maven (1.2.1 or earlier)
-```xml
     <repository>
       <id>JXP</id>
       <url>https://raw.github.com/robinfriedli/JXP/repository/</url>
