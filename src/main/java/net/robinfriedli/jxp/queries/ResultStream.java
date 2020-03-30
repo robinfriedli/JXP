@@ -2,6 +2,7 @@ package net.robinfriedli.jxp.queries;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.function.Supplier;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -34,7 +35,7 @@ public class ResultStream<E extends XmlElement> {
     public E getFirstResult() {
         checkTerminated();
         terminated = true;
-        return resultStream.findFirst().orElse(null);
+        return tryCollect(() -> resultStream.findFirst().orElse(null));
     }
 
     public E requireFirstResult() {
@@ -64,7 +65,7 @@ public class ResultStream<E extends XmlElement> {
             }
         );
 
-        return resultStream.collect(onlyResultCollector);
+        return tryCollect(() -> resultStream.collect(onlyResultCollector));
     }
 
     public E requireOnlyResult() {
@@ -78,38 +79,34 @@ public class ResultStream<E extends XmlElement> {
     }
 
     public List<E> collect() {
-        checkTerminated();
-        terminated = true;
-        return resultStream.collect(Collectors.toList());
+        return collect(Collectors.toList());
     }
 
     public <C extends Collection<E>> C collect(Collector<E, ?, C> collector) {
         checkTerminated();
         terminated = true;
-        return resultStream.collect(collector);
+        return tryCollect(() -> resultStream.collect(collector));
     }
 
     public QueryResult<E, List<E>> getResult() {
-        checkTerminated();
-        terminated = true;
-        return new QueryResult<>(resultStream.collect(Collectors.toList()));
+        return getResult(Collectors.toList());
     }
 
     public <C extends Collection<E>> QueryResult<E, C> getResult(Collector<E, ?, C> collector) {
         checkTerminated();
         terminated = true;
-        return new QueryResult<>(resultStream.collect(collector));
+        return tryCollect(() -> new QueryResult<>(resultStream.collect(collector)));
     }
 
     public long count() {
         checkTerminated();
         terminated = true;
-        return resultStream.count();
+        return tryCollect(() -> resultStream.count());
     }
 
     // non terminating operations
 
-    public ResultStream<E> order(Order order) {
+    public ResultStream<E> order(Order<?> order) {
         resultStream = order.applyOrder(resultStream);
         return this;
     }
@@ -123,4 +120,14 @@ public class ResultStream<E extends XmlElement> {
             throw new QueryException("Stream has been terminated because it has already been operated upon. Use #getResult to collect a QueryResult.");
         }
     }
+
+    private <R> R tryCollect(Supplier<R> supplier) {
+        try {
+            return supplier.get();
+        } catch (ClassCastException e) {
+            throw new QueryException("Some found elements could not be converted to the target type. " +
+                "Consider expanding your query with the Conditions#instanceOf condition.", e);
+        }
+    }
+
 }

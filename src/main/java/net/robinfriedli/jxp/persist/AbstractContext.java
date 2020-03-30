@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -20,6 +21,7 @@ import javax.xml.xpath.XPathFactory;
 import org.slf4j.Logger;
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import net.robinfriedli.jxp.api.JxpBackend;
 import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.exceptions.CommitException;
@@ -30,6 +32,7 @@ import net.robinfriedli.jxp.exec.BaseInvoker;
 import net.robinfriedli.jxp.exec.Invoker;
 import net.robinfriedli.jxp.exec.QueuedTask;
 import net.robinfriedli.jxp.exec.modes.ListenersMutedMode;
+import net.robinfriedli.jxp.exec.modes.MutexSyncMode;
 import net.robinfriedli.jxp.exec.modes.SequentialMode;
 import net.robinfriedli.jxp.queries.Query;
 import net.robinfriedli.jxp.queries.ResultStream;
@@ -50,7 +53,6 @@ public abstract class AbstractContext implements Context {
     private String path;
     private File file;
     private List<Transaction> uncommittedTransactions = Lists.newArrayList();
-    private Object envVar;
     private ThreadLocal<Transaction> threadTransaction = new ThreadLocal<>();
 
     public AbstractContext(JxpBackend backend, Document document, Logger logger) {
@@ -128,6 +130,7 @@ public abstract class AbstractContext implements Context {
         }
 
         try {
+            file.getParentFile().mkdirs();
             file.createNewFile();
             this.file = file;
             this.path = path;
@@ -214,8 +217,8 @@ public abstract class AbstractContext implements Context {
     }
 
     @Override
-    public List<String> getUsedIds() {
-        return getElementsRecursive().stream().map(XmlElement::getId).collect(Collectors.toList());
+    public Set<String> getUsedIds() {
+        return getElementsRecursive().stream().filter(element -> element.getId() != null).map(XmlElement::getId).collect(Collectors.toSet());
     }
 
     @Override
@@ -319,21 +322,32 @@ public abstract class AbstractContext implements Context {
 
     @Override
     public void commitAll() {
-        uncommittedTransactions.forEach(tx -> {
-            try {
-                tx.commit();
-            } catch (CommitException e) {
-                logger.error("Exception during commit of transaction " + tx, e);
-            }
-        });
-
-        uncommittedTransactions.clear();
+        Set<Transaction> toRemove = Sets.newHashSet();
+        try {
+            Lists.newArrayList(uncommittedTransactions).forEach(tx -> {
+                try {
+                    tx.commit();
+                    toRemove.add(tx);
+                } catch (CommitException e) {
+                    throw new PersistException("Exception during commit of transaction " + tx, e);
+                }
+            });
+        } finally {
+            uncommittedTransactions.removeAll(toRemove);
+        }
     }
 
     @Override
     public void revertAll() {
-        uncommittedTransactions.forEach(Transaction::rollback);
-        uncommittedTransactions.clear();
+        Set<Transaction> toRemove = Sets.newHashSet();
+        try {
+            Lists.newArrayList(uncommittedTransactions).forEach(tx -> {
+                tx.rollback();
+                toRemove.add(tx);
+            });
+        } finally {
+            uncommittedTransactions.removeAll(toRemove);
+        }
     }
 
     @Override
@@ -348,13 +362,16 @@ public abstract class AbstractContext implements Context {
 
     @Override
     public <E> E invoke(boolean commit, boolean instantApply, Callable<E> task) {
-        return invoke(Invoker.Mode.create().with(getMode(instantApply, false).shouldCommit(commit)), task);
+        Invoker.Mode mode = Invoker.Mode.create()
+            .with(new MutexSyncMode(getMutexKey()))
+            .with(getTransactionMode(instantApply, false).shouldCommit(commit));
+        return invoke(mode, task);
     }
 
     @Override
     public <E> E invoke(Invoker.Mode mode, Callable<E> task) {
         BaseInvoker invoker = new BaseInvoker();
-        return invoker.invoke(mode, task, e -> new RuntimeException("Exception in task", e));
+        return invoker.invoke(mode, task, e -> new PersistException("Exception in task", e));
     }
 
     @Override
@@ -384,18 +401,6 @@ public abstract class AbstractContext implements Context {
     }
 
     @Override
-    public <E> E invoke(boolean commit, boolean instantApply, Callable<E> task, Object envVar) {
-        this.envVar = envVar;
-        return invoke(commit, instantApply, task);
-    }
-
-    @Override
-    public void invoke(boolean commit, boolean instantApply, Runnable task, Object envVar) {
-        this.envVar = envVar;
-        invoke(commit, instantApply, task);
-    }
-
-    @Override
     public void invokeSequential(int sequence, Runnable task) {
         invokeSequential(sequence, () -> {
             task.run();
@@ -405,15 +410,32 @@ public abstract class AbstractContext implements Context {
 
     @Override
     public <E> E invokeSequential(int sequence, Callable<E> task) {
-        return invoke(Invoker.Mode.create().with(new SequentialMode(this, sequence)), task);
+        Invoker.Mode mode = Invoker.Mode.create()
+            .with(new MutexSyncMode(getMutexKey()))
+            .with(new SequentialMode(this, sequence));
+        return invoke(mode, task);
     }
 
     @Override
-    public <E> QueuedTask<E> futureInvoke(boolean commit, boolean instantApply, boolean cancelOnFailure, boolean triggerListeners, Callable<E> callable) {
-        QueuedTask<E> queuedTask = new QueuedTask<>(this, commit, instantApply, cancelOnFailure, triggerListeners, callable, logger);
+    public <E> QueuedTask<E> futureInvoke(boolean commit, boolean instantApply, boolean cancelOnFailure, boolean triggerListeners, boolean enqueue, Callable<E> callable) {
+        Invoker.Mode mode = Invoker.Mode.create();
+
+        if (!triggerListeners) {
+            mode.with(new ListenersMutedMode(backend));
+        }
+
+        mode.with(getTransactionMode(instantApply, false));
+        return futureInvoke(cancelOnFailure, enqueue, mode, callable);
+    }
+
+    @Override
+    public <E> QueuedTask<E> futureInvoke(boolean cancelOnFailure, boolean enqueue, Invoker.Mode mode, Callable<E> callable) {
+        QueuedTask<E> queuedTask = new QueuedTask<>(this, cancelOnFailure, mode, callable, logger);
         Transaction transaction = threadTransaction.get();
-        if (transaction != null) {
+        if (enqueue && transaction != null) {
             transaction.queueTask(queuedTask);
+        } else if (enqueue) {
+            throw new PersistException("The submitted task was set to enqueue but no active transaction exists in the current thread");
         }
 
         return queuedTask;
@@ -421,19 +443,19 @@ public abstract class AbstractContext implements Context {
 
     @Override
     public <E> QueuedTask<E> futureInvoke(boolean cancelOnFailure, boolean triggerListeners, Callable<E> callable) {
-        return futureInvoke(true, true, cancelOnFailure, triggerListeners, callable);
+        return futureInvoke(true, true, cancelOnFailure, triggerListeners, true, callable);
     }
 
     @Override
     public <E> QueuedTask<E> futureInvoke(Callable<E> callable) {
-        return futureInvoke(true, true, true, true, callable);
+        return futureInvoke(true, true, true, true, true, callable);
     }
 
     @Override
     public <E> E invokeWithoutListeners(boolean commit, boolean instantApply, Callable<E> callable) {
         Invoker.Mode mode = Invoker.Mode.create()
             .with(new ListenersMutedMode(getBackend()))
-            .with(getMode(instantApply, false).shouldCommit(commit));
+            .with(getTransactionMode(instantApply, false).shouldCommit(commit));
         return invoke(mode, callable);
     }
 
@@ -457,23 +479,13 @@ public abstract class AbstractContext implements Context {
 
     @Override
     public void apply(boolean instantApply, Runnable task) {
-        Invoker.Mode mode = Invoker.Mode.create().with(getMode(instantApply, true));
+        Invoker.Mode mode = Invoker.Mode.create().with(getTransactionMode(instantApply, true));
         invoke(mode, task);
     }
 
     @Override
     public void apply(Runnable task) {
         apply(true, task);
-    }
-
-    @Override
-    public Object getEnvVar() {
-        return envVar;
-    }
-
-    @Override
-    public void setEnvVar(Object envVar) {
-        this.envVar = envVar;
     }
 
     @Override
@@ -502,7 +514,20 @@ public abstract class AbstractContext implements Context {
         return transaction;
     }
 
-    private AbstractTransactionalMode getMode(boolean instantApply, boolean applyOnly) {
+    @Override
+    public String getMutexKey() {
+        if (file != null) {
+            try {
+                return file.getCanonicalPath();
+            } catch (IOException e) {
+                throw new PersistException("could not get canonical path of file", e);
+            }
+        }
+
+        return String.valueOf(document.hashCode());
+    }
+
+    private AbstractTransactionalMode getTransactionMode(boolean instantApply, boolean applyOnly) {
         return AbstractTransactionalMode.Builder.create()
             .setInstantApply(instantApply)
             .setApplyOnly(applyOnly)

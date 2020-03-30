@@ -6,7 +6,7 @@ Java XML Persistence API
     <dependency>
       <groupId>net.robinfriedli</groupId>
       <artifactId>JXP</artifactId>
-      <version>1.3</version>
+      <version>1.4</version>
       <type>pom</type>
     </dependency>
 
@@ -20,7 +20,7 @@ Java XML Persistence API
 ## Gradle
 ```gradle
     dependencies {
-        compile 'net.robinfriedli:JXP:1.3'
+        compile 'net.robinfriedli:JXP:1.4'
     }
 
     repositories {
@@ -480,3 +480,16 @@ changes anymore.
 
 StringConverter is a static utility method to convert a String into any other class used by XmlAttribute#getValue and
 the ValueComparator for queries. You can extend to support more classes by using StringConverter#map
+
+## Thread safety
+JXP offers thread safety by synchronising transactions and thus write access across all threads using a global instance
+of the net.robinfriedli.jxp.exec.MutexSync class. This class maps mutex objects to the canonical file path (for persistent
+contexts) or hashcode of the dom Document instance. Furthermore MutexSync automatically counts how many threads are using
+the mutex and drops unused mutexes to avoid leaking memory. Thread safety can only be established when using the propert
+synchronisation modes, all Context#invoke methods use synchronisation unless specified otherwise but when using a custom
+execution mode be sure to add the net.robinfriedli.jxp.exec.MutexSyncMode, this especially important to keep in mind
+when using Context#futureInvoke to run tasks in a separate thread as this method does not normally apply the MutexSyncMode
+because it is commonly used to queue tasks to run after the current transaction within the same thread thus assuming it is
+already running inside a synchronised parent task.
+
+JXP often creates copies of internal collections before iterating for stability in a highly concurrent environment.
