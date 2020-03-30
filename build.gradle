@@ -40,8 +40,8 @@ publishing {
 }
 
 bintray {
-    user = "robinfriedli"
-    key = "3b8ae70ea2867ddb2f512a63fecdccc5fce1dc6a"
+    user = ""
+    key = ""
     publications = ['maven']
     pkg {
         repo = rootProject.group
