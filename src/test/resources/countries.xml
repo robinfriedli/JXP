@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<countries>
+  <country name="Schweiz" englishName="Switzerland" sovereign="true" population="8000000">
+    <state name="Zurich" population="1500000">
+      <city name="Zurich" population="400000"/>
+      <city name="Winterthur" population="100000"/>
+    </state>
+    <state name="Geneva" population="200000">
+      <city name="Geneva" population="200000"/>
+    </state>
+  </country>
+  <country name="United Kingdom" englishName="United Kingdom" sovereign="true" population="66000000">
+    <state name="Greater London" population="8900000">
+      <city name="London" population="8900000"/>
+    </state>
+    <state name="Greater Manchester" population="2800000">
+      <city name="Manchester" population="2800000"/>
+    </state>
+    <state name="City of Edinburgh" population="900000">
+      <city name="Edinburgh" population="500000"/>
+    </state>
+  </country>
+  <country name="England" englishName="England" sovereign="false" population="55980000">
+    <city name="London" population="8900000"/>
+    <city name="Manchester" population="510000"/>
+  </country>
+  <country englishName="Sweden" name="Sverige" sovereign="true">
+    <city name="Stockholm" population="950000"/>
+  </country>
+  <country englishName="France" name="France" sovereign="true">
+    <city name="Paris" population="2000000"/>
+  </country>
+  <country englishName="Scotland" name="Scotland" sovereign="false">
+    <city name="Edinburgh" population="500000"/>
+  </country>
+  <country englishName="Canada" name="Canada" sovereign="true">
+    <city name="Toronto" population="2700000"/>
+  </country>
+</countries>

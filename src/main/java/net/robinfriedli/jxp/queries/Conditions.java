@@ -63,4 +63,8 @@ public final class Conditions {
         return and(XmlElement::hasSubElements, xmlElement -> xmlElement.getSubElements().stream().allMatch(subPredicate));
     }
 
+    public static Predicate<XmlElement> parentMatches(Predicate<XmlElement> parentPredicate) {
+        return and(XmlElement::isSubElement, xmlElement -> parentPredicate.test(xmlElement.getParent()));
+    }
+
 }

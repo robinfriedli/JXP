@@ -2,6 +2,7 @@ package net.robinfriedli.jxp.persist;
 
 import java.io.File;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.function.Predicate;
 
@@ -9,9 +10,10 @@ import javax.annotation.Nullable;
 
 import net.robinfriedli.jxp.api.JxpBackend;
 import net.robinfriedli.jxp.api.XmlElement;
-import net.robinfriedli.jxp.events.JxpEventListener;
+import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.exec.Invoker;
 import net.robinfriedli.jxp.exec.QueuedTask;
+import net.robinfriedli.jxp.exec.modes.MutexSyncMode;
 import net.robinfriedli.jxp.queries.Conditions;
 import net.robinfriedli.jxp.queries.QueryResult;
 import net.robinfriedli.jxp.queries.ResultStream;
@@ -49,7 +51,8 @@ public interface Context extends AutoCloseable {
     File getFile();
 
     /**
-     * @return true if this Context is persisted to a file
+     * @return true if this Context is persisted to a file. This also requires the persistent target to be writable, so
+     * this returns false for a Context created from an InputStream
      */
     boolean isPersistent();
 
@@ -62,6 +65,7 @@ public interface Context extends AutoCloseable {
      * Persist this context to an XML file, if based on a {@link Document} instance.
      *
      * @param path the path to save the Context to.
+     * @throws PersistException if persisting to the file fails
      */
     void persist(String path);
 
@@ -117,7 +121,7 @@ public interface Context extends AutoCloseable {
     /**
      * @return all Ids that are used by XmlElements in this Context
      */
-    List<String> getUsedIds();
+    Set<String> getUsedIds();
 
     /**
      * Return an {@link XmlElement} saved in this Context where {@link XmlElement#getId()} matches the provided id
@@ -269,6 +273,8 @@ public interface Context extends AutoCloseable {
 
     /**
      * Core invoke implementation that is called by each overloading method that runs the task in any given {@link Invoker.Mode}
+     *
+     * @throws PersistException if a checked exception occurs
      */
     <E> E invoke(Invoker.Mode mode, Callable<E> task);
 
@@ -310,28 +316,6 @@ public interface Context extends AutoCloseable {
     void invoke(Runnable task);
 
     /**
-     * Like {@link #invoke(boolean, boolean, Callable)} but also sets this Context's environment variable to the
-     * passed Object. For an explanation regarding envVar see {@link #getEnvVar()}.
-     *
-     * @param commit defines if the changes will be committed to XML file immediately after applying or remain in Context
-     * @param task   any Callable
-     * @param envVar any Object to set as envVar in Context
-     * @param <E>    return type of Callable
-     * @return any Object of type E
-     */
-    <E> E invoke(boolean commit, boolean instantApply, Callable<E> task, Object envVar);
-
-    /**
-     * Like {@link #invoke(boolean, boolean, Runnable)} but also sets this Context's environment variable to the
-     * passed Object. For an explanation regarding envVar see {@link #getEnvVar()}.
-     *
-     * @param commit defines if the changes will be committed to XML file immediately after applying or remain in Context
-     * @param task   any Runnable
-     * @param envVar any Object to set as envVar in Context
-     */
-    void invoke(boolean commit, boolean instantApply, Runnable task, Object envVar);
-
-    /**
      * Like {@link #invoke(boolean, boolean, Runnable)} but runs in a {@link SequentialTx}, meaning all changes will
      * get committed / flushed each time the amount of changes recorded by the transaction reaches the provided number
      */
@@ -356,25 +340,39 @@ public interface Context extends AutoCloseable {
      * <p>
      * If this is called within a transaction this task will added as a queued task to the transaction and run after
      * the transaction finished. Else the implementor needs to start the task manually.
+     * <p>
+     * This is commonly used to run a task after the current transaction has finished in the same thread, if you want to
+     * run the task in a separate thread you should use {@link #futureInvoke(boolean, boolean, Invoker.Mode, Callable)}
+     * and apply the {@link MutexSyncMode} to enable synchronisation of the task.
      *
      * @param callable         the callable to call in the future
      * @param cancelOnFailure  if the task has been queued to a transaction cancel it when the transaction fails
      * @param triggerListeners trigger or mute listeners for the invoked task
+     * @param enqueue          whether to enqueue this task to run after the current transaction (if available) in the same thread.
      * @param <E>              the type the callable returns
      * @return the {@link QueuedTask} that will be executed after the current Transaction is done automatically,
      * if called within Transaction (e.g EventListeners)
      */
-    <E> QueuedTask<E> futureInvoke(boolean commit, boolean instantApply, boolean cancelOnFailure, boolean triggerListeners, Callable<E> callable);
+    <E> QueuedTask<E> futureInvoke(boolean commit, boolean instantApply, boolean cancelOnFailure, boolean triggerListeners, boolean enqueue, Callable<E> callable);
 
     /**
-     * calls {@link #futureInvoke(boolean, boolean, boolean, boolean, Callable)} with default values commit = true,
-     * instantApply = true
+     * Core {@link #futureInvoke(boolean, boolean, boolean, boolean, boolean, Callable)} implementation that allows to set
+     * a custom mode. This should be used if the resulting QueuedTask is to be executed in a separated thread with the
+     * {@link MutexSyncMode} applied (using the mutex returned by {@link #getMutexKey()}).
+     *
+     * @throws PersistException if enqueue is true but no active transaction exists in the current thread
+     */
+    <E> QueuedTask<E> futureInvoke(boolean cancelOnFailure, boolean enqueue, Invoker.Mode mode, Callable<E> callable);
+
+    /**
+     * calls {@link #futureInvoke(boolean, boolean, boolean, boolean, boolean, Callable)} with default values commit = true,
+     * instantApply = true, enqueue = true
      */
     <E> QueuedTask<E> futureInvoke(boolean cancelOnFailure, boolean triggerListeners, Callable<E> callable);
 
     /**
-     * {@link #futureInvoke(boolean, boolean, boolean, boolean, Callable)} with default values commit = true,
-     * instantApply = true, cancelOnFailure = true, triggerListeners = true
+     * {@link #futureInvoke(boolean, boolean, boolean, boolean, boolean, Callable)} with default values commit = true,
+     * instantApply = true, cancelOnFailure = true, triggerListeners = true, enqueue = true
      */
     <E> QueuedTask<E> futureInvoke(Callable<E> callable);
 
@@ -410,26 +408,6 @@ public interface Context extends AutoCloseable {
     void apply(Runnable task);
 
     /**
-     * The environment variable can be anything you might need somewhere els in context with this transaction.
-     * The environment variable is set when using either method {@link #invoke(boolean, boolean, Callable, Object)}
-     * {@link #invoke(boolean, boolean, Runnable, Object)}
-     * <p>
-     * E.g. say you're developing a Discord bot and you've implemented an {@link JxpEventListener} that sends a message
-     * after an Element has been added. In this case you could set the MessageChannel the command came from as envVar
-     * to send the message to the right channel.
-     *
-     * @return the environment variable of this Context.
-     */
-    Object getEnvVar();
-
-    /**
-     * set the variable for this Context. For a description on envVar see {@link #getEnvVar()}
-     *
-     * @param envVar variable to set
-     */
-    void setEnvVar(Object envVar);
-
-    /**
      * @return the current Transaction
      */
     @Nullable
@@ -448,10 +426,15 @@ public interface Context extends AutoCloseable {
     Transaction getActiveTransaction();
 
     /**
-     * Partitionable Context that can be bound to an object of Type E. The Context can then be retrieved from the
-     * ContextManager via the {@link JxpBackend#getBoundContext(Object)} method, this checks whether the passed object
-     * equals the BindableContext's boundObject, it does not have to be the same object. Each BindableContext will create
-     * a new file based on the base Context (a copy of the path specified in the ContextManager)
+     * @return the mutex key that may be used to synchronise tasks using {@link MutexSyncMode}. For persistent Contexts
+     * this returns the canonical file path, else this uses the hash code of the document instance.
+     */
+    String getMutexKey();
+
+    /**
+     * Specialized Context that may be "bound" to any Object of type E, as in it can easy be retrieved from the {@link JxpBackend}
+     * via {@link JxpBackend#getBoundContext(Object)} in which case the Context is returned if the Object it is bound to
+     * is equal to the provided Object according to {@link Object#equals(Object)}.
      *
      * @param <E> Type the Context may be bound to
      */

@@ -2,7 +2,7 @@ package net.robinfriedli.jxp.events;
 
 import net.robinfriedli.jxp.api.XmlAttribute;
 
-public class AttributeChangingEvent extends HelperEvent {
+public class AttributeChangingEvent extends ElementChangingEvent {
 
     private final XmlAttribute attribute;
     private final String oldValue;
@@ -15,6 +15,11 @@ public class AttributeChangingEvent extends HelperEvent {
         this.newValue = newValue;
     }
 
+    @Override
+    public void doCommit() {
+        getSource().requireElement().setAttribute(attribute.getAttributeName(), newValue);
+    }
+
     public XmlAttribute getAttribute() {
         return attribute;
     }
@@ -25,5 +30,10 @@ public class AttributeChangingEvent extends HelperEvent {
 
     public String getNewValue() {
         return newValue;
+    }
+
+    @Override
+    protected void revertCommit() {
+        getSource().requireElement().setAttribute(attribute.getAttributeName(), oldValue);
     }
 }

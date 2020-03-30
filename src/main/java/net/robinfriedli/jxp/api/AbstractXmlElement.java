@@ -13,11 +13,12 @@ import javax.annotation.Nullable;
 import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.events.AttributeChangingEvent;
+import net.robinfriedli.jxp.events.AttributeDeletedEvent;
 import net.robinfriedli.jxp.events.ElementChangingEvent;
 import net.robinfriedli.jxp.events.ElementCreatedEvent;
 import net.robinfriedli.jxp.events.ElementDeletingEvent;
 import net.robinfriedli.jxp.events.RecursiveDeletingEvent;
-import net.robinfriedli.jxp.events.ValueChangingEvent;
+import net.robinfriedli.jxp.events.TextContentChangingEvent;
 import net.robinfriedli.jxp.events.VirtualEvent;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.persist.Context;
@@ -36,7 +37,7 @@ public abstract class AbstractXmlElement implements XmlElement {
 
     private final String tagName;
 
-    private final List<XmlAttribute> attributes;
+    private final Map<String, XmlAttribute> attributes;
 
     private final List<XmlElement> subElements;
 
@@ -81,9 +82,9 @@ public abstract class AbstractXmlElement implements XmlElement {
         this.textContent = textContent;
         this.state = State.CONCEPTION;
 
-        List<XmlAttribute> attributes = Lists.newArrayList();
+        Map<String, XmlAttribute> attributes = new HashMap<>();
         for (String attributeName : attributeMap.keySet()) {
-            attributes.add(new XmlAttribute(this, attributeName, attributeMap.get(attributeName)));
+            attributes.put(attributeName, new XmlAttribute(this, attributeName, attributeMap.get(attributeName)));
         }
         this.attributes = attributes;
 
@@ -104,10 +105,10 @@ public abstract class AbstractXmlElement implements XmlElement {
         this.context = context;
         this.state = State.CLEAN;
 
-        List<XmlAttribute> attributes = Lists.newArrayList();
+        Map<String, XmlAttribute> attributes = new HashMap<>();
         Map<String, String> attributeMap = ElementUtils.getAttributes(element);
         for (String attributeName : attributeMap.keySet()) {
-            attributes.add(new XmlAttribute(this, attributeName, attributeMap.get(attributeName)));
+            attributes.put(attributeName, new XmlAttribute(this, attributeName, attributeMap.get(attributeName)));
         }
         this.attributes = attributes;
 
@@ -149,12 +150,12 @@ public abstract class AbstractXmlElement implements XmlElement {
         Map<String, String> attributeMap = new HashMap<>();
 
         if (copySubElements && hasSubElements()) {
-            for (XmlElement subElement : this.subElements) {
+            for (XmlElement subElement : Lists.newArrayList(this.subElements)) {
                 subElements.add(subElement.copy(true, instantiateContributedClass));
             }
         }
 
-        for (XmlAttribute attribute : attributes) {
+        for (XmlAttribute attribute : Lists.newArrayList(attributes.values())) {
             attributeMap.put(attribute.getAttributeName(), attribute.getValue());
         }
 
@@ -212,7 +213,14 @@ public abstract class AbstractXmlElement implements XmlElement {
     @Override
     public void setParent(XmlElement parent) {
         if (this.parent != null) {
-            throw new IllegalStateException(toString() + " already has a parent. Remove it from the old parent first.");
+            if (this.parent instanceof UninitializedParent) {
+                UninitializedParent uninitializedParent = (UninitializedParent) this.parent;
+                if (uninitializedParent.getChild() != this) {
+                    throw new IllegalArgumentException("The provided UninitializedParent is a parent of a different element");
+                }
+            } else {
+                throw new IllegalStateException(toString() + " already has a parent. Remove it from the old parent first.");
+            }
         }
 
         this.parent = parent;
@@ -248,12 +256,17 @@ public abstract class AbstractXmlElement implements XmlElement {
 
     @Override
     public List<XmlAttribute> getAttributes() {
+        return Lists.newArrayList(attributes.values());
+    }
+
+    @Override
+    public Map<String, XmlAttribute> getAttributeMap() {
         return attributes;
     }
 
     @Override
     public XmlAttribute getAttribute(String attributeName) {
-        List<XmlAttribute> foundAttributes = attributes.stream()
+        List<XmlAttribute> foundAttributes = Lists.newArrayList(attributes.values()).stream()
             .filter(a -> a.getAttributeName().equals(attributeName))
             .collect(Collectors.toList());
 
@@ -267,8 +280,8 @@ public abstract class AbstractXmlElement implements XmlElement {
     }
 
     @Override
-    public void addAttribute(XmlAttribute attribute) {
-        attributes.add(attribute);
+    public void removeAttribute(String attributeName) {
+        getAttribute(attributeName).remove();
     }
 
     @Override
@@ -369,7 +382,7 @@ public abstract class AbstractXmlElement implements XmlElement {
 
     @Override
     public <E extends XmlElement> E getSubElement(String id, Class<E> type) {
-        List<E> foundSubElements = getSubElements().stream()
+        List<E> foundSubElements = Lists.newArrayList(getSubElements()).stream()
             .filter(subElem -> type.isInstance(subElem) && subElem.getId() != null && subElem.getId().equals(id))
             .map(type::cast)
             .collect(Collectors.toList());
@@ -406,7 +419,7 @@ public abstract class AbstractXmlElement implements XmlElement {
 
     @Override
     public boolean hasSubElement(String id) {
-        return getSubElements().stream().anyMatch(subElem -> subElem.getId() != null && subElem.getId().equals(id));
+        return Lists.newArrayList(getSubElements()).stream().anyMatch(subElem -> subElem.getId() != null && subElem.getId().equals(id));
     }
 
     @Override
@@ -417,8 +430,7 @@ public abstract class AbstractXmlElement implements XmlElement {
     @Override
     public void setTextContent(String textContent) {
         String oldValue = String.valueOf(getTextContent());
-        ValueChangingEvent<String> valueChangingEvent = new ValueChangingEvent<>(this, oldValue, textContent);
-        addChange(ElementChangingEvent.textContentChange(valueChangingEvent));
+        addChange(new TextContentChangingEvent(this, oldValue, textContent));
     }
 
     @Override
@@ -506,82 +518,14 @@ public abstract class AbstractXmlElement implements XmlElement {
         return changes != null && !changes.isEmpty();
     }
 
-    @Deprecated
-    @Override
-    public ElementChangingEvent getFirstChange() {
-        return hasChanges() ? getChanges().get(0) : null;
-    }
-
-    @Deprecated
-    @Override
-    public ElementChangingEvent getLastChange() {
-        List<ElementChangingEvent> changes = getChanges();
-        return hasChanges() ? changes.get(changes.size() - 1) : null;
-    }
-
-    @Deprecated
-    @Override
-    public AttributeChangingEvent getFirstAttributeChange(String attributeName) {
-        if (!hasAttribute(attributeName)) {
-            throw new IllegalArgumentException(toString() + " does not have an attribute named " + attributeName);
-        }
-
-        if (hasChanges()) {
-            for (ElementChangingEvent change : getChanges()) {
-                if (change.attributeChanged(attributeName)) {
-                    return change.getAttributeChange(attributeName);
-                }
-            }
-        }
-
-        return null;
-    }
-
-    @Deprecated
-    @Override
-    public AttributeChangingEvent getLastAttributeChange(String attributeName) {
-        if (!hasAttribute(attributeName)) {
-            throw new IllegalArgumentException(toString() + " does not have an attribute named " + attributeName);
-        }
-
-        AttributeChangingEvent attributeChange = null;
-        if (hasChanges()) {
-            for (ElementChangingEvent change : getChanges()) {
-                if (change.attributeChanged(attributeName)) {
-                    attributeChange = change.getAttributeChange(attributeName);
-                }
-            }
-        }
-
-        return attributeChange;
-    }
-
     @Override
     public boolean attributeChanged(String attributeName) {
-        return getFirstAttributeChange(attributeName) != null;
-    }
-
-    @Deprecated
-    @Override
-    public ValueChangingEvent<String> getFirstTextContentChange() {
-        for (ElementChangingEvent change : getChanges()) {
-            if (change.textContentChanged()) {
-                return change.getChangedTextContent();
-            }
-        }
-
-        return null;
+        return Lists.newArrayList(changes).stream().anyMatch(change -> change.attributeChanged(attributeName));
     }
 
     @Override
     public boolean textContentChanged() {
-        return getFirstTextContentChange() != null;
-    }
-
-    @Deprecated
-    @Override
-    public void clearChanges() {
-        this.changes.clear();
+        return Lists.newArrayList(changes).stream().anyMatch(change -> change.getChangedTextContent() != null);
     }
 
     @Override
@@ -611,15 +555,15 @@ public abstract class AbstractXmlElement implements XmlElement {
 
     @Override
     public <E extends XmlElement> List<E> getInstancesOf(Class<E> c) {
-        return getSubElements().stream()
+        return Lists.newArrayList(getSubElements()).stream()
             .filter(c::isInstance)
             .map(c::cast)
             .collect(Collectors.toList());
     }
 
     @Override
-    public <E extends XmlElement> List<E> getInstancesOf(Class<E> c, Class... ignoredSubClasses) {
-        return getSubElements().stream()
+    public <E extends XmlElement> List<E> getInstancesOf(Class<E> c, Class<?>... ignoredSubClasses) {
+        return Lists.newArrayList(getSubElements()).stream()
             .filter(elem -> c.isInstance(elem) && Arrays.stream(ignoredSubClasses).noneMatch(clazz -> clazz.isInstance(elem)))
             .map(c::cast)
             .collect(Collectors.toList());
@@ -645,14 +589,23 @@ public abstract class AbstractXmlElement implements XmlElement {
             throw new UnsupportedOperationException("Source of ElementChangingEvent is not this XmlElement. Change can't be applied.");
         }
 
-        if (change.getChangedAttributes() != null) {
-            for (AttributeChangingEvent changedAttribute : change.getChangedAttributes()) {
-                XmlAttribute attributeToChange = changedAttribute.getAttribute();
-                if (isRollback) {
-                    attributeToChange.revertChange(changedAttribute);
-                } else {
-                    attributeToChange.applyChange(changedAttribute);
-                }
+        AttributeChangingEvent attributeChange = change.getAttributeChange();
+        if (attributeChange != null) {
+            XmlAttribute attributeToChange = attributeChange.getAttribute();
+            if (isRollback) {
+                attributeToChange.revertChange(attributeChange);
+            } else {
+                attributeToChange.applyChange(attributeChange);
+            }
+        }
+
+        AttributeDeletedEvent attributeDeletion = change.getAttributeDeletion();
+        if (attributeDeletion != null) {
+            XmlAttribute attribute = attributeDeletion.getAttribute();
+            if (isRollback) {
+                attributes.put(attribute.getAttributeName(), attribute);
+            } else {
+                attributes.remove(attribute.getAttributeName());
             }
         }
 
