@@ -39,9 +39,18 @@ publishing {
     }
 }
 
+def bintrayProperties = new Properties()
+def bintrayPropertiesFile = file("src/main/resources/bintray.properties")
+if (bintrayPropertiesFile.exists()) {
+    bintrayPropertiesFile.withInputStream { bintrayProperties.load(it) }
+} else {
+    bintrayProperties.setProperty("bintray.user", "empty")
+    bintrayProperties.setProperty("bintray.key", "empty")
+}
+
 bintray {
-    user = "robinfriedli"
-    key = "3b8ae70ea2867ddb2f512a63fecdccc5fce1dc6a"
+    user = bintrayProperties.get("bintray.user")
+    key = bintrayProperties.get("bintray.key")
     publications = ['maven']
     pkg {
         repo = rootProject.group
