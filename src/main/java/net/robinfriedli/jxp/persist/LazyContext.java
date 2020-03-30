@@ -2,16 +2,19 @@ package net.robinfriedli.jxp.persist;
 
 import java.io.File;
 import java.util.List;
+import java.util.Objects;
 
 import org.slf4j.Logger;
 
 import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.api.JxpBackend;
 import net.robinfriedli.jxp.api.StaticXmlElementFactory;
+import net.robinfriedli.jxp.api.UninitializedParent;
 import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.queries.xpath.XQueryBuilder;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 
 /**
  * Context implementation with focus on low memory usage. This context type only stores XmlElements in state CONCEPTION
@@ -70,7 +73,13 @@ public class LazyContext extends AbstractContext {
         List<XmlElement> elementInstances = Lists.newArrayList();
 
         for (Element docElement : results) {
-            elementInstances.add(StaticXmlElementFactory.instantiatePersistentXmlElement(docElement, this));
+            XmlElement xmlElement = StaticXmlElementFactory.instantiatePersistentXmlElement(docElement, this);
+            Node parentNode = docElement.getParentNode();
+            if (parentNode instanceof Element && !Objects.equals(parentNode, parentNode.getOwnerDocument().getDocumentElement())) {
+                xmlElement.setParent(new UninitializedParent(this, (Element) parentNode, xmlElement));
+            }
+
+            elementInstances.add(xmlElement);
         }
 
         return elementInstances;

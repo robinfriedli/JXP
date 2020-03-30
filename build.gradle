@@ -14,16 +14,26 @@ dependencies {
     compile "org.seleniumhq.selenium:selenium-support:3.14.0"
     compile "org.slf4j:slf4j-api:1.7.26"
     compile "net.robinfriedli:StringList:1.5"
+
+    testCompile "org.testng:testng:7.1.0"
+    testCompile "com.google.truth:truth:1.0.1"
 }
 
 group = "net.robinfriedli"
-version = "1.3"
+version = "1.4"
 description = "JXP"
 sourceCompatibility = "8"
+targetCompatibility = "8"
+
+compileJava.options.encoding = "UTF-8"
 
 task sourceJar(type: Jar) {
     classifier 'sources'
     from sourceSets.main.allJava
+}
+
+test {
+    useTestNG()
 }
 
 publishing {
@@ -56,4 +66,9 @@ bintray {
         repo = rootProject.group
         name = "JXP"
     }
+}
+
+tasks.withType(JavaCompile) {
+    options.compilerArgs << '-Xlint:unchecked'
+    options.deprecation = true
 }
