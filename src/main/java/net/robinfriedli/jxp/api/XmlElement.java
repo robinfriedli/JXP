@@ -1,12 +1,13 @@
 package net.robinfriedli.jxp.api;
 
 import java.util.List;
-import java.util.Map;
 import java.util.function.Predicate;
 
 import javax.annotation.Nullable;
 
+import net.robinfriedli.jxp.events.AttributeChangingEvent;
 import net.robinfriedli.jxp.events.ElementChangingEvent;
+import net.robinfriedli.jxp.events.ValueChangingEvent;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.persist.Context;
 import net.robinfriedli.jxp.queries.Conditions;
@@ -110,19 +111,14 @@ public interface XmlElement {
     Context getContext();
 
     /**
-     * @return Tag name for this xml element
+     * @return Tag name for Class to be used in XML file
      */
     String getTagName();
 
     /**
-     * @return a new list instance containing all {@link XmlAttribute} instances on this XmlElement
+     * @return XML attributes of XmlElement
      */
     List<XmlAttribute> getAttributes();
-
-    /**
-     * @return the actual map instance holding the {@link XmlAttribute} instances for this XmlElement
-     */
-    Map<String, XmlAttribute> getAttributeMap();
 
     /**
      * @param attributeName name of attribute
@@ -130,14 +126,7 @@ public interface XmlElement {
      */
     XmlAttribute getAttribute(String attributeName);
 
-
-    /**
-     * Deletes the given attribute from this XmlElement. This action requires a Transaction for an XmlElement in a
-     * physical state.
-     *
-     * @param attributeName the name of the attribute to remove
-     */
-    void removeAttribute(String attributeName);
+    void addAttribute(XmlAttribute attribute);
 
     /**
      * Set existing attribute to a different value or create a new one.
@@ -196,7 +185,7 @@ public interface XmlElement {
     void removeSubElements(XmlElement... elements);
 
     /**
-     * @return all SubElements. This exposes the internal list directly.
+     * @return all SubElements
      */
     List<XmlElement> getSubElements();
 
@@ -354,7 +343,7 @@ public interface XmlElement {
     void revertChange(ElementChangingEvent change) throws UnsupportedOperationException, PersistException;
 
     /**
-     * @return all {@link ElementChangingEvent} on this XmlElement. This exposes the internal list directly.
+     * @return all {@link ElementChangingEvent} on this XmlElement
      */
     List<ElementChangingEvent> getChanges();
 
@@ -362,6 +351,41 @@ public interface XmlElement {
      * @return true if this XmlElement has uncommitted {@link ElementChangingEvent}s
      */
     boolean hasChanges();
+
+    /**
+     * Returns the first {@link ElementChangingEvent} of this XmlElement that has not been persisted yet. Used to identify
+     * this XmlElement within the XML file. At least before {@link XmlElementShadow} was introduced.
+     *
+     * @return first {@link ElementChangingEvent}
+     */
+    @Deprecated
+    ElementChangingEvent getFirstChange();
+
+    /**
+     * Returns last uncommitted {@link ElementChangingEvent} of this XmlElement. Used to persist XmlElement changes.
+     *
+     * @return last {@link ElementChangingEvent}
+     */
+    @Deprecated
+    ElementChangingEvent getLastChange();
+
+    /**
+     * Get first change made to {@link XmlAttribute} with specified name since last commit
+     *
+     * @param attributeName name of attribute
+     * @return first change made to specified attribute since last commit
+     */
+    @Deprecated
+    AttributeChangingEvent getFirstAttributeChange(String attributeName);
+
+    /**
+     * Get last change made to {@link XmlAttribute} with specified name since last commit
+     *
+     * @param attributeName name of attribute
+     * @return last change made to specified attribute since last commit
+     */
+    @Deprecated
+    AttributeChangingEvent getLastAttributeChange(String attributeName);
 
     /**
      * Check if attribute with specified name has any uncommitted changes
@@ -372,9 +396,22 @@ public interface XmlElement {
     boolean attributeChanged(String attributeName);
 
     /**
+     * @return first uncommitted change made to the XmlElement's text content
+     */
+    @Deprecated
+    ValueChangingEvent<String> getFirstTextContentChange();
+
+    /**
      * @return true if this XmlElement's text content has uncommitted changes
      */
     boolean textContentChanged();
+
+    /**
+     * Clear all {@link ElementChangingEvent} on this XmlElement. Changes are cleared on commit but applied to the in
+     * memory XmlElement after adding.
+     */
+    @Deprecated
+    void clearChanges();
 
     /**
      * Prevents this XmlElement instance from being changed or deleted.
@@ -418,7 +455,7 @@ public interface XmlElement {
      * @param <E>               Type to return
      * @return All Elements that are an instance of specified Class but not specified subclasses
      */
-    <E extends XmlElement> List<E> getInstancesOf(Class<E> c, Class<?>... ignoredSubClasses);
+    <E extends XmlElement> List<E> getInstancesOf(Class<E> c, Class... ignoredSubClasses);
 
     /**
      * Checks all subElements for provided {@link Predicate}s and returns {@link QueryResult} with matching elements.

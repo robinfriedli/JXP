@@ -1,40 +1,59 @@
 package net.robinfriedli.jxp.events;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 import javax.annotation.Nullable;
 
+import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.exceptions.PersistException;
+import org.w3c.dom.Element;
 
-public abstract class ElementChangingEvent extends Event {
+public class ElementChangingEvent extends Event {
 
-    public ElementChangingEvent(XmlElement source) {
+    @Nullable
+    private final List<AttributeChangingEvent> changedAttributes;
+
+    @Nullable
+    private final ValueChangingEvent<String> changedTextContent;
+
+    public ElementChangingEvent(AttributeChangingEvent changedAttribute) {
+        this(changedAttribute.getSource(), Lists.newArrayList(changedAttribute), null);
+    }
+
+    public ElementChangingEvent(XmlElement source, List<AttributeChangingEvent> changedAttributes) {
+        this(source, changedAttributes, null);
+    }
+
+    public ElementChangingEvent(ValueChangingEvent<String> changedTextContent) {
+        this(changedTextContent.getSource(), null, changedTextContent);
+    }
+
+    public ElementChangingEvent(XmlElement source,
+                                @Nullable List<AttributeChangingEvent> changedAttributes,
+                                @Nullable ValueChangingEvent<String> changedTextContent) {
         super(source);
+        this.changedAttributes = changedAttributes;
+        this.changedTextContent = changedTextContent;
+    }
+
+    public static ElementChangingEvent attributeChange(AttributeChangingEvent attributeChange) {
+        return new ElementChangingEvent(attributeChange);
+    }
+
+    public static ElementChangingEvent textContentChange(ValueChangingEvent<String> changedTextContent) {
+        return new ElementChangingEvent(changedTextContent);
     }
 
     @Nullable
-    public AttributeChangingEvent getAttributeChange() {
-        return unwrap(AttributeChangingEvent.class);
+    public List<AttributeChangingEvent> getChangedAttributes() {
+        return changedAttributes;
     }
 
     @Nullable
-    public AttributeDeletedEvent getAttributeDeletion() {
-        return unwrap(AttributeDeletedEvent.class);
-    }
-
-    @Nullable
-    public TextContentChangingEvent getChangedTextContent() {
-        return unwrap(TextContentChangingEvent.class);
-    }
-
-    @Nullable
-    public <E extends ElementChangingEvent> E unwrap(Class<E> type) {
-        if (type.isInstance(this)) {
-            return type.cast(this);
-        }
-
-        return null;
+    public ValueChangingEvent<String> getChangedTextContent() {
+        return changedTextContent;
     }
 
     @Override
@@ -48,61 +67,83 @@ public abstract class ElementChangingEvent extends Event {
         }
     }
 
-    @Nullable
-    @Deprecated
-    public List<AttributeChangingEvent> getChangedAttributes() {
-        return null;
-    }
-
     @Override
     public void revert() {
         if (isApplied()) {
             getSource().revertChange(this);
             if (isCommitted()) {
-                revertCommit();
+                Element element = getSource().requireElement();
+                List<AttributeChangingEvent> changedAttributes = getChangedAttributes();
+
+                if (changedAttributes != null && !changedAttributes.isEmpty()) {
+                    for (AttributeChangingEvent changedAttribute : changedAttributes) {
+                        element.setAttribute(changedAttribute.getAttribute().getAttributeName(), changedAttribute.getOldValue());
+                    }
+                }
+
+                if (textContentChanged()) {
+                    //noinspection ConstantConditions
+                    element.setTextContent(changedTextContent.getOldValue());
+                }
             } else {
                 getSource().removeChange(this);
             }
         }
     }
 
-    protected abstract void doCommit();
-
-    protected abstract void revertCommit();
-
     @Override
     public void commit() {
-        doCommit();
+        XmlElement element = getSource();
+        Element elem = element.requireElement();
+        List<AttributeChangingEvent> attributeChanges = getChangedAttributes();
+
+        if (attributeChanges != null && !attributeChanges.isEmpty()) {
+            for (AttributeChangingEvent attributeChange : attributeChanges) {
+                elem.setAttribute(attributeChange.getAttribute().getAttributeName(), attributeChange.getNewValue());
+                attributeChange.setCommitted(true);
+            }
+        }
+        if (textContentChanged()) {
+            //noinspection ConstantConditions
+            elem.setTextContent(changedTextContent.getNewValue());
+        }
 
         setCommitted(true);
         getSource().removeChange(this);
     }
 
-    @Deprecated
     public boolean isEmpty() {
-        return false;
+        return (changedAttributes == null || changedAttributes.isEmpty())
+            && (changedTextContent == null);
     }
 
     public boolean attributeChanged(String attributeName) {
-        AttributeChangingEvent attributeChange = getAttributeChange();
-        if (attributeChange != null) {
-            return attributeChange.getAttribute().getAttributeName().equals(attributeName);
+        if (changedAttributes != null) {
+            return changedAttributes.stream().anyMatch(change -> change.getAttribute().getAttributeName().equals(attributeName));
         }
 
         return false;
     }
 
     public AttributeChangingEvent getAttributeChange(String attributeName) {
-        AttributeChangingEvent attributeChange = getAttributeChange();
-        if (attributeChange != null && attributeChange.getAttribute().getAttributeName().equals(attributeName)) {
-            return attributeChange;
+        if (changedAttributes != null) {
+            List<AttributeChangingEvent> foundChanges = changedAttributes.stream()
+                .filter(change -> change.getAttribute().getAttributeName().equals(attributeName))
+                .collect(Collectors.toList());
+
+            if (foundChanges.size() == 1) {
+                return foundChanges.get(0);
+            } else if (foundChanges.size() > 1) {
+                // this should never happen since the event is generated when calling XmlAttribute#setValue
+                throw new IllegalStateException("Multiple changes recorded for attribute " + attributeName + " within the same event");
+            }
         }
 
         return null;
     }
 
     public boolean textContentChanged() {
-        return getChangedTextContent() != null;
+        return changedTextContent != null;
     }
 
 }

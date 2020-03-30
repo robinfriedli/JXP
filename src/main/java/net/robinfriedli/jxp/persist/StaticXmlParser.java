@@ -2,7 +2,6 @@ package net.robinfriedli.jxp.persist;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -18,9 +17,9 @@ import net.robinfriedli.jxp.exceptions.PersistException;
 import org.w3c.dom.Document;
 import org.xml.sax.SAXException;
 
-public class StaticXmlParser {
+class StaticXmlParser {
 
-    public static void writeToFile(Context context) throws CommitException {
+    static void writeToFile(Context context) throws CommitException {
         if (!context.isPersistent()) {
             throw new CommitException("Context is not persistent. Cannot write to file");
         }
@@ -39,18 +38,7 @@ public class StaticXmlParser {
         }
     }
 
-    public static Document parseDocument(File xml) {
-        try {
-            DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
-            DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
-            return dBuilder.parse(xml);
-        } catch (IOException | SAXException | ParserConfigurationException e) {
-            throw new PersistException("Exception while parsing document", e);
-        }
-    }
-
-
-    public static Document parseDocument(InputStream xml) {
+    static Document parseDocument(File xml) {
         try {
             DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
             DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();

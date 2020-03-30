@@ -2,7 +2,6 @@ package net.robinfriedli.jxp.api;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,16 +49,11 @@ public class StaticXmlElementFactory {
         return xmlElements;
     }
 
-    public static XmlElement instantiatePersistentXmlElement(Element element, Context context, Element... excludedSubElements) {
+    public static XmlElement instantiatePersistentXmlElement(Element element, Context context) {
         List<Element> subElements = ElementUtils.getChildren(element);
         List<XmlElement> instantiatedSubElems = Lists.newArrayList();
-        List<Element> excludedSubs = Arrays.asList(excludedSubElements);
 
         for (Element subElement : subElements) {
-            if (excludedSubs.contains(subElement)) {
-                continue;
-            }
-
             instantiatedSubElems.add(instantiatePersistentXmlElement(subElement, context));
         }
 

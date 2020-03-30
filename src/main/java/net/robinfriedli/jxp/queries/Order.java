@@ -5,26 +5,23 @@ import java.util.stream.Stream;
 
 import javax.annotation.Nullable;
 
-import net.robinfriedli.jxp.api.StringConverter;
 import net.robinfriedli.jxp.api.XmlElement;
 
 
-public class Order<E extends Comparable<E>> {
+public class Order {
 
     @Nullable
     private final String attribute;
     private final Direction direction;
     private final Source source;
-    private final Class<E> attributeType;
 
-    public Order(Direction direction, Source source, Class<E> attributeType) {
-        this(null, direction, source, attributeType);
+    public Order(Direction direction, Source source) {
+        this(null, direction, source);
     }
 
-    public Order(@Nullable String attribute, Direction direction, Source source, Class<E> attributeType) {
+    public Order(@Nullable String attribute, Direction direction, Source source) {
         this.source = source;
         this.direction = direction;
-        this.attributeType = attributeType;
         if (source == Source.ATTRIBUTE) {
             if (attribute != null) {
                 this.attribute = attribute;
@@ -38,39 +35,23 @@ public class Order<E extends Comparable<E>> {
         }
     }
 
-    public static Order<String> attribute(String name, Direction direction) {
-        return new Order<>(name, direction, Source.ATTRIBUTE, String.class);
+    public static Order attribute(String name, Direction direction) {
+        return new Order(name, direction, Source.ATTRIBUTE);
     }
 
-    public static Order<String> attribute(String name) {
-        return new Order<>(name, Direction.ASCENDING, Source.ATTRIBUTE, String.class);
+    public static Order attribute(String name) {
+        return new Order(name, Direction.ASCENDING, Source.ATTRIBUTE);
     }
 
-    public static Order<String> textContent(Direction direction) {
-        return new Order<>(direction, Source.TEXT_CONTENT, String.class);
+    public static Order textContent(Direction direction) {
+        return new Order(direction, Source.TEXT_CONTENT);
     }
 
-    public static Order<String> textContent() {
-        return new Order<>(Direction.ASCENDING, Source.TEXT_CONTENT, String.class);
+    public static Order textContent() {
+        return new Order(Direction.ASCENDING, Source.TEXT_CONTENT);
     }
 
-    public static <E extends Comparable<E>> Order<E> attribute(String name, Direction direction, Class<E> attributeType) {
-        return new Order<>(name, direction, Source.ATTRIBUTE, attributeType);
-    }
-
-    public static <E extends Comparable<E>> Order<E> attribute(String name, Class<E> attributeType) {
-        return new Order<>(name, Direction.ASCENDING, Source.ATTRIBUTE, attributeType);
-    }
-
-    public static <E extends Comparable<E>> Order<E> textContent(Direction direction, Class<E> attributeType) {
-        return new Order<>(direction, Source.TEXT_CONTENT, attributeType);
-    }
-
-    public static <E extends Comparable<E>> Order<E> textContent(Class<E> attributeType) {
-        return new Order<>(Direction.ASCENDING, Source.TEXT_CONTENT, attributeType);
-    }
-
-    public <O extends XmlElement> Stream<O> applyOrder(Stream<O> resultStream) {
+    public <E extends XmlElement> Stream<E> applyOrder(Stream<E> resultStream) {
         Comparator<XmlElement> comparator = getComparator();
         return resultStream.sorted(comparator);
     }
@@ -78,9 +59,15 @@ public class Order<E extends Comparable<E>> {
     public Comparator<XmlElement> getComparator() {
         Comparator<XmlElement> comparator;
         if (source == Source.ATTRIBUTE) {
-            comparator = Comparator.comparing(v -> v.getAttribute(attribute).getValue(attributeType));
+            comparator = Comparator.comparing(v -> {
+                if (v.hasAttribute(attribute)) {
+                    return v.getAttribute(attribute).getValue();
+                } else {
+                    return "";
+                }
+            });
         } else {
-            comparator = Comparator.comparing(v -> StringConverter.convert(v.getTextContent(), attributeType));
+            comparator = Comparator.comparing(XmlElement::getTextContent);
         }
 
         if (direction == Direction.DESCENDING) {

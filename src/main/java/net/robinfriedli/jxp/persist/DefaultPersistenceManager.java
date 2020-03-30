@@ -2,20 +2,29 @@ package net.robinfriedli.jxp.persist;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.util.List;
+import java.util.Map;
 
 import javax.annotation.Nullable;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
 
 import com.google.common.collect.Lists;
+import net.robinfriedli.jxp.api.BaseXmlElement;
 import net.robinfriedli.jxp.api.StaticXmlElementFactory;
 import net.robinfriedli.jxp.api.XmlAttribute;
 import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.events.AttributeChangingEvent;
 import net.robinfriedli.jxp.events.ElementChangingEvent;
-import net.robinfriedli.jxp.events.TextContentChangingEvent;
+import net.robinfriedli.jxp.events.ValueChangingEvent;
 import net.robinfriedli.jxp.exceptions.CommitException;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import org.w3c.dom.Document;
@@ -46,7 +55,36 @@ public class DefaultPersistenceManager {
 
     @Deprecated
     public XmlElement instantiateXmlElement(Element element, Context context) {
-        return StaticXmlElementFactory.instantiatePersistentXmlElement(element, context);
+        Map<String, Class<? extends XmlElement>> instantiationContributions = StaticXmlElementFactory.INSTANTIATION_CONTRIBUTIONS;
+        List<Element> subElements = getChildren(element);
+        List<XmlElement> instantiatedSubElems = Lists.newArrayList();
+
+        for (Element subElement : subElements) {
+            instantiatedSubElems.add(instantiateXmlElement(subElement, context));
+        }
+
+        Class<? extends XmlElement> xmlClass = instantiationContributions.get(element.getTagName());
+        if (xmlClass != null) {
+            try {
+                if (subElements.isEmpty()) {
+                    Constructor<? extends XmlElement> constructor = xmlClass.getConstructor(Element.class, Context.class);
+                    return constructor.newInstance(element, context);
+                } else {
+                    Constructor<? extends XmlElement> constructor = xmlClass.getConstructor(Element.class, List.class, Context.class);
+                    return constructor.newInstance(element, instantiatedSubElems, context);
+                }
+            } catch (NoSuchMethodException e) {
+                throw new PersistException("Your class " + xmlClass + " does not have the appropriate Constructor", e);
+            } catch (IllegalAccessException e) {
+                throw new PersistException("Cannot access constructor of class " + xmlClass, e);
+            } catch (InstantiationException e) {
+                throw new PersistException("Cannot instantiate class " + xmlClass, e);
+            } catch (InvocationTargetException e) {
+                throw new PersistException("Exception while invoking constructor of " + xmlClass, e);
+            }
+        } else {
+            return new BaseXmlElement(element, instantiatedSubElems, context);
+        }
     }
 
     @Deprecated
@@ -73,14 +111,29 @@ public class DefaultPersistenceManager {
     }
 
     @Deprecated
-    public void setTextContent(TextContentChangingEvent changedTextContent) throws CommitException {
+    public void setTextContent(ValueChangingEvent<String> changedTextContent) throws CommitException {
         Element element = requireElement(changedTextContent.getSource());
         element.setTextContent(changedTextContent.getNewValue());
     }
 
     @Deprecated
     public void writeToFile(Context context) throws CommitException {
-        StaticXmlParser.writeToFile(context);
+        if (!context.isPersistent()) {
+            throw new CommitException("Context is not persistent. Cannot write to file");
+        }
+
+        Document doc = context.getDocument();
+        try {
+            TransformerFactory transformerFactory = TransformerFactory.newInstance();
+            Transformer transformer = transformerFactory.newTransformer();
+            DOMSource source = new DOMSource(doc);
+            @SuppressWarnings("ConstantConditions")
+            StreamResult result = new StreamResult(context.getFile());
+
+            transformer.transform(source, result);
+        } catch (TransformerException e) {
+            throw new CommitException("Exception while writing to file", e);
+        }
     }
 
     @Deprecated
@@ -131,7 +184,7 @@ public class DefaultPersistenceManager {
     public void castElement(XmlElement target, XmlElement source) {
         if (target.matchesStructure(source)) {
             List<AttributeChangingEvent> changedAttributes = Lists.newArrayList();
-            TextContentChangingEvent changedTextContent = null;
+            ValueChangingEvent<String> changedTextContent = null;
 
             for (XmlAttribute attribute : source.getAttributes()) {
                 XmlAttribute existingAttribute = target.getAttribute(attribute.getAttributeName());
@@ -141,7 +194,7 @@ public class DefaultPersistenceManager {
             }
 
             if (!target.getTextContent().equals(source.getTextContent())) {
-                changedTextContent = new TextContentChangingEvent(target, target.getTextContent(), source.getTextContent());
+                changedTextContent = new ValueChangingEvent<>(target, target.getTextContent(), source.getTextContent());
             }
 
             List<XmlElement> addedSubElements = Lists.newArrayList();
@@ -162,11 +215,10 @@ public class DefaultPersistenceManager {
                 }
             }
 
-            for (AttributeChangingEvent changedAttribute : changedAttributes) {
-                target.addChange(changedAttribute);
-            }
-            if (changedTextContent != null) {
-                target.addChange(changedTextContent);
+            ElementChangingEvent elementChangingEvent = new ElementChangingEvent(target, changedAttributes, changedTextContent);
+
+            if (!elementChangingEvent.isEmpty()) {
+                target.addChange(elementChangingEvent);
             }
             if (!addedSubElements.isEmpty()) {
                 target.addSubElements(addedSubElements);

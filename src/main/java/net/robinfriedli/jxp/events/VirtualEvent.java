@@ -49,7 +49,7 @@ public class VirtualEvent extends Event {
                     if (transaction != null) {
                         transaction.queueTask(queuedTask);
                     } else {
-                        queuedTask.runLoggingErrors();
+                        queuedTask.run();
                     }
                 }
             }

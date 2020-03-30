@@ -31,7 +31,11 @@ public abstract class AbstractTransactionalMode extends AbstractDelegatingModeWr
             newTransaction = getTransaction();
             oldTransaction = null;
             if (activeTransaction != null) {
-                switchTx();
+                if (activeTransaction.isActive()) {
+                    switchTx();
+                } else {
+                    switchTx();
+                }
             } else {
                 openTx();
             }
@@ -60,7 +64,7 @@ public abstract class AbstractTransactionalMode extends AbstractDelegatingModeWr
                     if (failed && t.isCancelOnFailure()) {
                         t.cancel(false);
                     } else {
-                        t.runLoggingErrors();
+                        t.run();
                     }
                 });
             }

@@ -5,7 +5,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
-import java.util.Vector;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
@@ -55,7 +54,7 @@ public class JxpBuilder {
     }
 
     public JxpBackend build() {
-        JxpBackend jxpBackend = new JxpBackend(new Vector<>(listeners), defaultContextType);
+        JxpBackend jxpBackend = new JxpBackend(listeners, defaultContextType);
         contextFiles.forEach(jxpBackend::getContext);
         contextDocuments.forEach(jxpBackend::getContext);
 

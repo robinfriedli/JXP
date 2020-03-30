@@ -1,7 +1,7 @@
 package net.robinfriedli.jxp.api;
 
 import net.robinfriedli.jxp.events.AttributeChangingEvent;
-import net.robinfriedli.jxp.events.AttributeDeletedEvent;
+import net.robinfriedli.jxp.events.ElementChangingEvent;
 
 public class XmlAttribute {
 
@@ -35,11 +35,7 @@ public class XmlAttribute {
 
     public void setValue(Object value) {
         String stringValue = value instanceof String ? (String) value : StringConverter.reverse(value);
-        parentElement.addChange(new AttributeChangingEvent(this, stringValue));
-    }
-
-    public void remove() {
-        parentElement.addChange(new AttributeDeletedEvent(parentElement, this));
+        parentElement.addChange(ElementChangingEvent.attributeChange(new AttributeChangingEvent(this, stringValue)));
     }
 
     public <V> V getValue(Class<V> target) {
@@ -119,19 +115,10 @@ public class XmlAttribute {
         public void setValue(Object value) {
             if (definitiveAttribute == null) {
                 definitiveAttribute = new XmlAttribute(getParentElement(), getAttributeName());
-                getParentElement().getAttributeMap().put(getAttributeName(), definitiveAttribute);
+                getParentElement().addAttribute(definitiveAttribute);
             }
 
             definitiveAttribute.setValue(value);
-        }
-
-        @Override
-        public void remove() {
-            if (definitiveAttribute == null) {
-                throw new IllegalArgumentException(String.format("No such attribute '%s' on '%s'", getAttributeName(), getParentElement()));
-            }
-
-            definitiveAttribute.remove();
         }
 
         @Override

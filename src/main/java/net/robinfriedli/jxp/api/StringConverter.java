@@ -14,10 +14,10 @@ public class StringConverter {
 
     static {
         stringConversions.add(new StringConversionContribution<>(0, Integer.class, Integer::parseInt, Object::toString));
-        stringConversions.add(new StringConversionContribution<>(0D, Double.class, Double::parseDouble, Object::toString));
-        stringConversions.add(new StringConversionContribution<>(0F, Float.class, Float::parseFloat, Object::toString));
-        stringConversions.add(new StringConversionContribution<>(0L, Long.class, Long::parseLong, Object::toString));
-        stringConversions.add(new StringConversionContribution<>(false, Boolean.class, Boolean::parseBoolean, Object::toString));
+        stringConversions.add(new StringConversionContribution<>(0D, Double.class, Double::new, Object::toString));
+        stringConversions.add(new StringConversionContribution<>(0F, Float.class, Float::new, Object::toString));
+        stringConversions.add(new StringConversionContribution<>(0L, Long.class, Long::new, Object::toString));
+        stringConversions.add(new StringConversionContribution<>(false, Boolean.class, Boolean::new, Object::toString));
         stringConversions.add(new StringConversionContribution<>(BigDecimal.ZERO, BigDecimal.class, BigDecimal::new, BigDecimal::toString));
         stringConversions.add(new StringConversionContribution<>("", String.class, String::toString, String::toString));
     }

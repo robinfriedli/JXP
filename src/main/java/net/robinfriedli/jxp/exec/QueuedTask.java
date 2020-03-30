@@ -6,28 +6,35 @@ import java.util.concurrent.FutureTask;
 
 import org.slf4j.Logger;
 
+import net.robinfriedli.jxp.exec.modes.ListenersMutedMode;
 import net.robinfriedli.jxp.persist.Context;
 
-/**
- * Task that encapsulates transactions happening sometime in the future. this may and often is used to queue tasks after
- * the current transaction to then run them in the same thread. For that reason those tasks do not run synchronised as
- * their parent task already does. Else this can be used to execute tasks in a separate thread, in this case the sync
- * mode should be applied, see {@link Context#futureInvoke(boolean, boolean, Invoker.Mode, Callable)}.
- *
- * @param <E> the return type of the task.
- */
 public class QueuedTask<E> extends FutureTask<E> {
 
     private final boolean cancelOnFailure;
     private final Logger logger;
 
-    public QueuedTask(Context context, boolean cancelOnFailure, Invoker.Mode mode, Callable<E> callable, Logger logger) {
-        super(() -> context.invoke(mode, callable));
+    public QueuedTask(Context context, boolean commit, boolean instantApply, boolean cancelOnFailure, boolean triggerListeners, Callable<E> callable, Logger logger) {
+        super(() -> {
+            Invoker.Mode mode = Invoker.Mode.create();
+
+            if (!triggerListeners) {
+                mode.with(new ListenersMutedMode(context.getBackend()));
+            }
+
+            AbstractTransactionalMode transactionalMode = AbstractTransactionalMode.Builder.create()
+                .setInstantApply(instantApply)
+                .shouldCommit(commit)
+                .build(context);
+            mode.with(transactionalMode);
+            return context.invoke(mode, callable);
+        });
         this.cancelOnFailure = cancelOnFailure;
         this.logger = logger;
     }
 
-    public void runLoggingErrors() {
+    @Override
+    public void run() {
         super.run();
         try {
             get();
