@@ -19,47 +19,32 @@ import org.w3c.dom.Element;
  */
 public class CachedContext extends AbstractContext {
 
-    private List<XmlElement> elements;
+    private XmlElement rootElement;
 
     public CachedContext(JxpBackend backend, Document document, Logger logger) {
         super(backend, document, logger);
-        this.elements = StaticXmlElementFactory.instantiateAllElements(this);
+        rootElement = StaticXmlElementFactory.instantiateDocumentElement(this);
     }
 
     public CachedContext(JxpBackend backend, File file, Logger logger) {
         super(backend, file, logger);
-        this.elements = StaticXmlElementFactory.instantiateAllElements(this);
+        rootElement = StaticXmlElementFactory.instantiateDocumentElement(this);
     }
 
     @Override
     public void reload() {
         super.reload();
-        elements = StaticXmlElementFactory.instantiateAllElements(this);
+        rootElement = StaticXmlElementFactory.instantiateDocumentElement(this);
+    }
+
+    @Override
+    public XmlElement getDocumentElement() {
+        return rootElement;
     }
 
     @Override
     public List<XmlElement> getElements() {
-        return elements;
-    }
-
-    @Override
-    public void addElement(XmlElement element) {
-        elements.add(element);
-    }
-
-    @Override
-    public void addElements(List<XmlElement> elements) {
-        this.elements.addAll(elements);
-    }
-
-    @Override
-    public void removeElement(XmlElement element) {
-        elements.remove(element);
-    }
-
-    @Override
-    public void removeElements(List<XmlElement> elements) {
-        this.elements.removeAll(elements);
+        return rootElement.getSubElements();
     }
 
     @Override

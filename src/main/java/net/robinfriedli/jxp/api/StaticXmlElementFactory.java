@@ -2,16 +2,24 @@ package net.robinfriedli.jxp.api;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+
+import javax.annotation.Nullable;
 
 import com.google.common.collect.Lists;
+import net.robinfriedli.jxp.collections.NodeList;
+import net.robinfriedli.jxp.collections.UninitializedNodeList;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.persist.Context;
 import net.robinfriedli.jxp.persist.ElementUtils;
 import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.Text;
 
 public class StaticXmlElementFactory {
 
@@ -21,14 +29,14 @@ public class StaticXmlElementFactory {
         INSTANTIATION_CONTRIBUTIONS.put(tagName, type);
     }
 
-    public static XmlElement instantiate(String tagName, Map<String, ?> attributeMap, List<XmlElement> subElements, String textContent) {
+    public static XmlElement instantiate(String tagName, List<net.robinfriedli.jxp.api.Node<?>> childNodes, Map<String, ?> attributeMap) {
         Class<? extends XmlElement> classToInstantiate = INSTANTIATION_CONTRIBUTIONS.get(tagName);
 
         if (classToInstantiate != null) {
             try {
                 Constructor<? extends XmlElement> constructor =
-                    classToInstantiate.getConstructor(String.class, Map.class, List.class, String.class);
-                return constructor.newInstance(tagName, attributeMap, subElements, textContent);
+                    classToInstantiate.getConstructor(String.class, List.class, Map.class);
+                return constructor.newInstance(tagName, childNodes, attributeMap);
             } catch (NoSuchMethodException e) {
                 // do nothing, just return a BaseXmlElement instead
             } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
@@ -36,43 +44,108 @@ public class StaticXmlElementFactory {
             }
         }
 
-        return new BaseXmlElement(tagName, attributeMap, subElements, textContent);
+        return new BaseXmlElement(tagName, childNodes, attributeMap);
     }
 
-    public static List<XmlElement> instantiateAllElements(Context context) {
-        List<XmlElement> xmlElements = Lists.newArrayList();
-        List<Element> allTopLevelElements = ElementUtils.getChildren(context.getDocument().getDocumentElement());
-
-        for (Element topElement : allTopLevelElements) {
-            xmlElements.add(instantiatePersistentXmlElement(topElement, context));
-        }
-
-        return xmlElements;
+    public static XmlElement instantiateDocumentElement(Context context) {
+        return instantiatePersistentXmlElement(context.getDocument().getDocumentElement(), context, true, null);
     }
 
-    public static XmlElement instantiatePersistentXmlElement(Element element, Context context, Element... excludedSubElements) {
-        List<Element> subElements = ElementUtils.getChildren(element);
-        List<XmlElement> instantiatedSubElems = Lists.newArrayList();
-        List<Element> excludedSubs = Arrays.asList(excludedSubElements);
+    public static XmlElement instantiateDocumentElement(Context context, @Nullable Set<? extends net.robinfriedli.jxp.api.Node<?>> preInstantiated) {
+        return instantiatePersistentXmlElement(context.getDocument().getDocumentElement(), context, true, preInstantiated);
+    }
 
-        for (Element subElement : subElements) {
-            if (excludedSubs.contains(subElement)) {
-                continue;
+    public static XmlElement instantiateDocumentElement(Context context, boolean initializeSubElements) {
+        return instantiatePersistentXmlElement(context.getDocument().getDocumentElement(), context, initializeSubElements, null);
+    }
+
+    public static XmlElement instantiateDocumentElement(Context context, boolean initializeSubElements, @Nullable Set<? extends net.robinfriedli.jxp.api.Node<?>> preInstantiated) {
+        return instantiatePersistentXmlElement(context.getDocument().getDocumentElement(), context, initializeSubElements, preInstantiated);
+    }
+
+    public static NodeList instantiateChildrenOf(Element element, Context context) {
+        return instantiateChildrenOf(element, context, true);
+    }
+
+    public static NodeList instantiateChildrenOf(Element element, Context context, boolean initializeSubElements) {
+        return instantiateChildrenOf(element, context, initializeSubElements, null);
+    }
+
+    public static NodeList instantiateChildrenOf(Element element, Context context, boolean initializeSubElements, @Nullable Set<? extends net.robinfriedli.jxp.api.Node<?>> preInstantiated) {
+        List<Node> childNodes = ElementUtils.getChildNodes(element);
+        List<net.robinfriedli.jxp.api.Node<?>> instantiatedChildNodes = Lists.newArrayList();
+
+        net.robinfriedli.jxp.api.Node<?> prev = null;
+        for (Node node : childNodes) {
+            net.robinfriedli.jxp.api.Node<?> subElement;
+            if (node instanceof Element) {
+                subElement = instantiatePersistentXmlElement((Element) node, context, initializeSubElements, preInstantiated);
+            } else if (node instanceof Text) {
+                Optional<TextNode> preInit;
+                if (preInstantiated != null) {
+                    preInit = preInstantiated.stream()
+                        .filter(e -> e instanceof TextNode)
+                        .filter(e -> Objects.equals(node, e.getElement()))
+                        .map(TextNode.class::cast)
+                        .findFirst();
+                } else {
+                    preInit = Optional.empty();
+                }
+
+                subElement = preInit.orElseGet(() -> new TextNode(context, (Text) node));
+            } else {
+                subElement = null;
             }
 
-            instantiatedSubElems.add(instantiatePersistentXmlElement(subElement, context));
+            if (subElement != null) {
+                subElement.internal().setPreviousSibling(prev);
+                if (prev != null) {
+                    prev.internal().setNextSibling(subElement);
+                }
+                prev = subElement;
+                instantiatedChildNodes.add(subElement);
+            }
+        }
+
+        return NodeList.ofLinked(instantiatedChildNodes);
+    }
+
+    public static XmlElement instantiatePersistentXmlElement(Element element, Context context) {
+        return instantiatePersistentXmlElement(element, context, null);
+    }
+
+    public static XmlElement instantiatePersistentXmlElement(Element element, Context context, boolean initializeSubElements) {
+        return instantiatePersistentXmlElement(element, context, initializeSubElements, null);
+    }
+
+    public static XmlElement instantiatePersistentXmlElement(Element element, Context context, @Nullable Set<? extends net.robinfriedli.jxp.api.Node<?>> preInstantiated) {
+        return instantiatePersistentXmlElement(element, context, true, preInstantiated);
+    }
+
+    private static XmlElement instantiatePersistentXmlElement(Element element, Context context, boolean initializeSubElements, @Nullable Set<? extends net.robinfriedli.jxp.api.Node<?>> preInstantiated) {
+        if (preInstantiated != null && preInstantiated.size() > 0) {
+            Optional<XmlElement> preInit = preInstantiated.stream()
+                .filter(e -> e instanceof XmlElement)
+                .filter(e -> element.equals(e.getElement()))
+                .map(XmlElement.class::cast)
+                .findFirst();
+            if (preInit.isPresent()) {
+                return preInit.get();
+            }
+        }
+
+        NodeList childNodeList;
+        if (initializeSubElements) {
+            childNodeList = instantiateChildrenOf(element, context, true, preInstantiated);
+        } else {
+            childNodeList = new UninitializedNodeList(context, element);
         }
 
         Class<? extends XmlElement> xmlClass = INSTANTIATION_CONTRIBUTIONS.get(element.getTagName());
         if (xmlClass != null) {
             try {
-                if (subElements.isEmpty()) {
-                    Constructor<? extends XmlElement> constructor = xmlClass.getConstructor(Element.class, Context.class);
-                    return constructor.newInstance(element, context);
-                } else {
-                    Constructor<? extends XmlElement> constructor = xmlClass.getConstructor(Element.class, List.class, Context.class);
-                    return constructor.newInstance(element, instantiatedSubElems, context);
-                }
+                Constructor<? extends XmlElement> constructor = xmlClass.getConstructor(Element.class, NodeList.class, Context.class);
+                return constructor.newInstance(element, childNodeList, context);
             } catch (NoSuchMethodException e) {
                 throw new PersistException("Your class " + xmlClass + " does not have the appropriate Constructor", e);
             } catch (IllegalAccessException e) {
@@ -83,7 +156,7 @@ public class StaticXmlElementFactory {
                 throw new PersistException("Exception while invoking constructor of " + xmlClass, e);
             }
         } else {
-            return new BaseXmlElement(element, instantiatedSubElems, context);
+            return new BaseXmlElement(element, childNodeList, context);
         }
     }
 

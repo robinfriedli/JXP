@@ -7,7 +7,8 @@ import java.util.Map;
 import javax.annotation.Nullable;
 
 import net.robinfriedli.jxp.api.AbstractXmlElement;
-import net.robinfriedli.jxp.api.XmlElement;
+import net.robinfriedli.jxp.api.Node;
+import net.robinfriedli.jxp.collections.NodeList;
 import net.robinfriedli.jxp.persist.Context;
 import org.w3c.dom.Element;
 
@@ -18,13 +19,12 @@ public class Continent extends AbstractXmlElement {
     }
 
     @SuppressWarnings("unused")
-    public Continent(Element element, Context context) {
-        super(element, context);
+    public Continent(Element element, NodeList subElements, Context context) {
+        super(element, subElements, context);
     }
 
-    @SuppressWarnings("unused")
-    public Continent(Element element, List<XmlElement> subElements, Context context) {
-        super(element, subElements, context);
+    public Continent(String tagName, List<Node<?>> childNodes, Map<String, ?> attributeMap) {
+        super(tagName, childNodes, attributeMap);
     }
 
     private static Map<String, ?> getAttributeMap(String name) {

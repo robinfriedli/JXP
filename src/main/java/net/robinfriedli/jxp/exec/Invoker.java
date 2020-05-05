@@ -9,7 +9,8 @@ import javax.annotation.Nullable;
 import net.robinfriedli.jxp.exec.modes.ExecutionMode;
 
 /**
- * Executor that manages running tasks within a transaction
+ * Executor that manages running tasks with a given {@link Mode} by wrapping the supplied Callable into the one
+ * provided by each {@link ModeWrapper}.
  */
 public interface Invoker {
 

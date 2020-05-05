@@ -21,7 +21,7 @@ public class ExceptionWrappingMode extends AbstractDelegatingModeWrapper {
         return () -> {
             try {
                 return callable.call();
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 throw mapperFunction.apply(e);
             }
         };

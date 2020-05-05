@@ -64,7 +64,7 @@ public final class Conditions {
     }
 
     public static Predicate<XmlElement> parentMatches(Predicate<XmlElement> parentPredicate) {
-        return and(XmlElement::isSubElement, xmlElement -> parentPredicate.test(xmlElement.getParent()));
+        return xmlElement -> xmlElement.getParent() != null && parentPredicate.test(xmlElement.getParent());
     }
 
 }

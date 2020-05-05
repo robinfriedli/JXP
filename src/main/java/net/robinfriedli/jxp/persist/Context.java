@@ -1,6 +1,7 @@
 package net.robinfriedli.jxp.persist;
 
 import java.io.File;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -9,14 +10,19 @@ import java.util.function.Predicate;
 import javax.annotation.Nullable;
 
 import net.robinfriedli.jxp.api.JxpBackend;
+import net.robinfriedli.jxp.api.Node;
+import net.robinfriedli.jxp.api.StaticXmlElementFactory;
 import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.exceptions.PersistException;
+import net.robinfriedli.jxp.exec.AbstractTransactionalMode;
 import net.robinfriedli.jxp.exec.Invoker;
 import net.robinfriedli.jxp.exec.QueuedTask;
 import net.robinfriedli.jxp.exec.modes.MutexSyncMode;
 import net.robinfriedli.jxp.queries.Conditions;
+import net.robinfriedli.jxp.queries.Query;
 import net.robinfriedli.jxp.queries.QueryResult;
 import net.robinfriedli.jxp.queries.ResultStream;
+import net.robinfriedli.jxp.queries.xpath.XQueryBuilder;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
@@ -40,7 +46,8 @@ public interface Context extends AutoCloseable {
     JxpBackend getBackend();
 
     /**
-     * @return the {@link Document dom Document} represented by this Context
+     * @return the {@link Document dom Document} represented by this Context. Changes made to this document are not
+     * reflected by JXP.
      */
     Document getDocument();
 
@@ -58,6 +65,9 @@ public interface Context extends AutoCloseable {
 
     /**
      * Delete this Context's XML file
+     *
+     * @throws IllegalStateException if this Context is not persisted to a file or it's file does not exist.
+     * @throws PersistException      if deleting the file fails
      */
     void deleteFile();
 
@@ -65,7 +75,9 @@ public interface Context extends AutoCloseable {
      * Persist this context to an XML file, if based on a {@link Document} instance.
      *
      * @param path the path to save the Context to.
-     * @throws PersistException if persisting to the file fails
+     * @throws PersistException         if persisting to the file fails
+     * @throws IllegalStateException    if this context already is persistent
+     * @throws IllegalArgumentException if the path is invalid or points to an already existing file
      */
     void persist(String path);
 
@@ -74,14 +86,17 @@ public interface Context extends AutoCloseable {
      * copy of the root element of this document. The resulting Context is not yet stored to a file.
      *
      * @return the newly create Context
+     * @throws PersistException if an exception occurs while copying the DOM document
      */
     Context copy();
 
     /**
-     * Copies this Context to create a new BoundContext.
+     * Copies this Context to create a new BoundContext. Depending on whether this is a {@link CachedContext} or
+     * {@link LazyContext} this creates a {@link BindableCachedContext} or {@link BindableLazyContext}.
      *
      * @param objectToBind the object to bind the new Context to
      * @return the newly created BindableContext
+     * @throws PersistException if an exception occurs while copying the DOM document
      */
     <E> BindableContext<E> copy(E objectToBind);
 
@@ -89,27 +104,65 @@ public interface Context extends AutoCloseable {
      * Reloads the elements stored in this Context. This means all current XmlElement instances will be cleared and
      * phantomized and re-instantiated based on the current state of the physical Document and the dom document will be
      * re-parsed. In case of a LazyContext this only does the second part. This action in only possible for persistent
-     * contexts.
+     * contexts. This renders all {@link XmlElement} instances previously associated with this context pointless as
+     * the DOM elements they are backed by belong to the old document.
+     *
+     * @throws UnsupportedOperationException if this context is not persistent
      */
     void reload();
 
     /**
-     * @return the path of the XML file of this Context
+     * @return the path of the XML file of this Context or null if not persistent
      */
     String getPath();
 
     /**
      * @return the tag name of the root element this Context represents
      */
-    String getRootElem();
+    String getRootTag();
 
     /**
-     * @return All Elements saved in this Context
+     * Returns the {@link XmlElement} instance representing the root element in the document, see {@link Document#getDocumentElement()}.
+     * <p>
+     * In case of a {@link LazyContext} this does not initialize the document element's children until they are queried
+     * (or the list containing the children is accessed in any way). The same thing applies to all child elements, all
+     * of their children are only initialized once queried. Furthermore this guarantees that each element is only instantiated
+     * once, so, for instance, when calling {@link XmlElement#getSubElementsRecursive()} on this element the first time
+     * all XmlElements are instantiated and each subsequent call to that method returns the same instances, which makes
+     * the element returned by this method a great fit for temporarily storing and managing all XmlElement instances when
+     * working with a {@link LazyContext}.
+     *
+     * @return the {@link XmlElement} representation of the document element
+     */
+    XmlElement getDocumentElement();
+
+    /**
+     * @return an immutable collection of all XmlElements in this Context. In case of a {@link LazyContext} this
+     * causes all elements to be instantiated. This includes all XmlElements that were created in the current transaction
+     * and excludes all XmlElements that were deleted in the current transaction, if the respective event has already been
+     * applied; in case of an {@link InstantApplyTx} (which is default) this is the case immediately when adding the event
+     * to the transaction, thus immediately when performing the action, else this happens when applying the transaction
+     * before commit at the end of the task.
+     * <p>
+     * In case of a {@link CachedContext} this simply returns an Immutable wrapper around the internal XmlElement storage
+     * (via {@link Collections#unmodifiableList(List)}).
+     * For a {@link LazyContext} this operation is more complex and much more expensive, which is why you should limit
+     * the usage of this method (or any method that calls this method, such as {@link #getElementsRecursive()},
+     * any of the {@link #getElement(String, Class)} methods or {@link #query(Predicate)}) as much as possible and store
+     * the output somewhere locally when used more than once (e.g. when executing more than one query). In case of a
+     * {@link LazyContext} this gathers all {@link XmlElement} instances from the current transaction and all uncommitted
+     * transactions (see {@link #getUncommittedTransactions()}) by collecting all events and taking the source XmlElement
+     * of those events that have been applied, finding the root (top level, meaning right below the document element)
+     * parent for all those XmlElements and adding all new root elements / removing all deleted root elements to make sure
+     * the output matches the current state and then instantiating the remaining XmlElements by calling
+     * {@link StaticXmlElementFactory#instantiatePersistentXmlElement(Element, Context, Set)} while providing
+     * the XmlElement instances it has already collected.
      */
     List<XmlElement> getElements();
 
     /**
-     * @return All Elements including subElements
+     * @return an immutable collection of all elements in this Context. Unlike {@link #getElements()} this flattens the
+     * elements to return a list that contains all sub elements directly.
      */
     List<XmlElement> getElementsRecursive();
 
@@ -179,7 +232,25 @@ public interface Context extends AutoCloseable {
 
     /**
      * Checks all XmlElements for provided {@link Predicate}s and returns {@link QueryResult} with matching elements.
-     * See {@link Conditions} for useful predicates.
+     * See {@link Conditions} for useful predicates. The performance of this method strongly depends on the performance
+     * of {@link #getElements()} for this Context implementation. For a {@link LazyContext} you should generally use an
+     * {@link #xPathQuery(String)} instead (see {@link XQueryBuilder}) as it only instantiates the XmlElements that were
+     * found, else you should make sure to use {@link Query#evaluate(Predicate)} directly instead of calling this method
+     * several times; e.g. for a {@link LazyContext} it's important that you do
+     * <pre>{@code
+     * List<XmlElement> elements = context.getElementsRecursive();
+     * List<XmlElement> result1 = Query.evaluate(attribute("name").is("value")).execute(elements).collect();
+     * List<XmlElement> result2 = Query.evaluate(attribute("name2").is("value2")).execute(elements).collect();
+     * }</pre>
+     * <p>
+     * instead of
+     *
+     * <pre>{@code
+     * List<XmlElement> result1 = context.query(attribute("name").is("value")).collect();
+     * List<XmlElement> result2 = context.query(attribute("name2").is("value2")).collect();
+     * }</pre>
+     * <p>
+     * because the {@link #getElements()} operation is expensive for {@link LazyContext} instances.
      *
      * @param condition Predicate to filter elements with, see {@link Conditions}
      * @return a stream of found elements
@@ -187,13 +258,40 @@ public interface Context extends AutoCloseable {
     ResultStream<XmlElement> query(Predicate<XmlElement> condition);
 
     /**
-     * Like {@link #query(Predicate)} but casts the found elements to the given class
+     * Like {@link #query(Predicate)} but casts the found elements to the given class, make sure all results are instances
+     * of the provided class by using the {@link Conditions#instanceOf(Class)} check.
      */
     <E extends XmlElement> ResultStream<E> query(Predicate<XmlElement> condition, Class<E> type);
 
     /**
      * Executes the provided XPath query and returns the {@link XmlElement}s in this Context that are based on the
-     * results or, if this is a {@link LazyContext}, instantiates {@link XmlElement}s based on the results.
+     * resulting DOM elements or, if this is a {@link LazyContext}, instantiates {@link XmlElement}s based on the results, making it
+     * a neat way to deal with a {@link LazyContext} that might contain many elements. However it is important to note
+     * that these queries are based on the state of the DOM document, thus uncommitted changes are not yet available.
+     * Also, in case of a {@link LazyContext} this always creates a new XmlElement instance for each result, leading to several
+     * XmlElement instances for the same DOM element when executing several queries that return common results or when also
+     * using {@link #getElements()}. This becomes a problem when modifying one of the duplicate XmlElements leading to
+     * inconsistencies as the change will not be applied to the other XmlElement; when modifying both instances (thus
+     * adding both to the transaction) {@link LazyContext#getElements()} might even throw an exception when encountering
+     * a DOM element that is represented by two XmlElement instances.
+     * While for a {@link CachedContext} this might return XmlElements instances where the current state might not match
+     * a query condition anymore due to uncommitted changes.
+     * For those reasons this method is best used outside of a transaction or at the start of one.
+     * One good use case for this method might look like this:
+     * <pre>{@code
+     * LazyContext context = jxp.createLazyContext("large_file.xml");
+     * List<XmlElement> relevantElements = context.xPathQuery(XQueryBuilder.find("country/city").where(XCondition.attribute("name").startsWith("A")).getXPath(context));
+     * XmlElement atlanta = Query.evaluate(attribute("name").is("Atlanta")).execute(relevantElements).requireOnlyResult();
+     * XmlElement athens = Query.evaluate(attribute("name").is("Athens")).execute(relevantElements).requireOnlyResult();
+     * List<XmlElement> results = Query.evaluate(attribute("name").endsWith("z")).execute(relevantElements).collect();
+     * context.invoke(() -> {
+     *     atlanta.setAttribute("population", 500000);
+     *     athens.setAttribute("population", 700000);
+     *     for (XmlElement result : results) {
+     *         result.delete();
+     *     }
+     * });
+     * }</pre>
      *
      * @param xPathQuery the XPath query
      * @return XmlElements instances based on results
@@ -201,39 +299,16 @@ public interface Context extends AutoCloseable {
     List<XmlElement> xPathQuery(String xPathQuery);
 
     /**
-     * Add Element to memory
-     *
-     * @param element to add to context
-     */
-    void addElement(XmlElement element);
-
-    /**
-     * Add Elements to memory
-     *
-     * @param elements to add to context
-     */
-    void addElements(List<XmlElement> elements);
-
-    /**
-     * Add Elements to memory
-     *
-     * @param elements to add to context
-     */
-    void addElements(XmlElement... elements);
-
-    void removeElement(XmlElement element);
-
-    void removeElements(List<XmlElement> xmlElements);
-
-    void removeElements(XmlElement... xmlElements);
-
-    /**
-     * Commit all previously uncommitted {@link Transaction}s on this Context
+     * Commit all previously uncommitted {@link Transaction}s on this Context, i.e. all transactions of tasks that were
+     * executed with commit = false that haven't been committed via commitAll() or reverted via revertAll() yet.
+     * Atomicity is only guaranteed per transaction, not across all transactions; meaning if one transaction fails
+     * it rolls back and the error message is logged but the remaining transactions are still going to be committed.
      */
     void commitAll();
 
     /**
-     * remove and rollback all uncommitted {@link Transaction}s on this Context
+     * remove and rollback all uncommitted {@link Transaction}s on this Context, i.e. all transactions of tasks that were
+     * executed with commit = false that haven't been committed via commitAll() or reverted via revertAll() yet.
      */
     void revertAll();
 
@@ -243,33 +318,44 @@ public interface Context extends AutoCloseable {
     boolean hasUncommittedTransactions();
 
     /**
-     * @return all saved uncommitted {@link Transaction} in this Context
+     * @return all saved uncommitted {@link Transaction} in this Context. This exposes the internal list to enable to only
+     * commit / revert selected transactions, this case the implementor is responsible to remove those transactions from
+     * the list
      */
     List<Transaction> getUncommittedTransactions();
 
     /**
-     * Run a Callable in a {@link Transaction}. For any actions that create, change or delete an {@link XmlElement}.
+     * Run a Callable in a {@link Transaction}. For any actions that create, change or delete an {@link XmlElement},
+     * i.e anything that requires a transaction.
+     * <p>
+     * This is the core invoke implementation above {@link #invoke(Invoker.Mode, Callable)} used for any invoke implementation
+     * without a custom execution {@link Invoker.Mode}. Calls {@link #invoke(Invoker.Mode, Callable)} with a Mode that
+     * combines {@link MutexSyncMode} and {@link AbstractTransactionalMode} to run a transaction that is synchronised
+     * across all threads based on the canonical file path or {@link Document instance} managed by this context.
+     * JXP does not support running several transactions targeting the same file / document concurrently.
      *
      * @param commit       defines if the transaction will be committed to XML file immediately after running or remain as
      *                     uncommitted transaction in the Context
      * @param instantApply defines whether the changes will be applied instantly or all at once after the task has run.
      *                     e.g. if false, this code would return the old value of "attribute", not "newValue"
-     *                     <pre>
-     *                          return context.invoke(true, false, () -> {
-     *                                  someElement.setAttribute("attribute", "newValue");
-     *                                  return someElement.geAttribute("attribute").getValue();
-     *                              })
-     *                     </pre>
+     *                     <pre>{@code
+     *                      return context.invoke(true, false, () -> {
+     *                          someElement.setAttribute("attribute", "newValue");
+     *                          return someElement.geAttribute("attribute").getValue();
+     *                      })
+     *                      }</pre>
      *                     however, disabling instantApply might slightly improve performance when dealing with a large number of changes.
+     *                     If false the transaction will be added to this Context's uncommitted transactions that can be
+     *                     committed or reverted using {@link #commitAll()} or {@link #revertAll()} respectively.
+     *                     If you never intend to commit the changes use {@link #apply(boolean, Runnable)}.
      * @param task         any Callable
      * @param <E>          return type of Callable
-     * @return any Object of type E
+     * @return the return value of the given Callable
      * <p>
      * Notice: when calling this method within an invoked task with different parameters, i.e. a different mode, the
      * context will switch to a new transaction an switch back after.
      */
     <E> E invoke(boolean commit, boolean instantApply, Callable<E> task);
-
 
     /**
      * Core invoke implementation that is called by each overloading method that runs the task in any given {@link Invoker.Mode}
@@ -284,24 +370,32 @@ public interface Context extends AutoCloseable {
     <E> E invoke(Callable<E> task);
 
     /**
-     * Invoke a task without a return value
+     * Convenience overload for {@link #invoke(boolean, boolean, Callable)} that creates a Callable that executes the
+     * given runnable. Used for any task where a return value is not required and no checked exception is thrown.
      * <p>
+     * Useful for short transactions like:
      * {@code context.invoke(() -> bla.setAttribute("name", "value"));}
      * <p>
-     * or several statements without returning anything like
-     *
-     * <pre>
-     *     context.invoke(() -> {
-     *        TestXmlElement elem = new TestXmlElement("test", context);
-     *        elem.setAttribute("test", "test");
-     *        elem.setTextContent("test");
-     *     });
-     * </pre>
+     * or tasks that do not return anything and do not throw a checked exception:
+     * <pre>{@code
+     * context.invoke(() -> {
+     *    TestXmlElement elem = new TestXmlElement("test", context);
+     *    elem.setAttribute("test", "test");
+     *    elem.setTextContent("test");
+     * });
+     * }</pre>
      * <p>
      * A {@link Transaction} is required by any action that creates, changes or deletes an {@link XmlElement}
      *
-     * @param commit defines if the changes will be committed to XML file immediately after applying or remain in Context
-     * @param task   any Runnable
+     * @param commit       defines if the changes will be committed to the underlying DOM structure or are only applied to
+     *                     the representative {@link XmlElement} or other {@link Node} instances. If false the transaction
+     *                     will be added to this Context's uncommitted transactions that can be committed or reverted using
+     *                     {@link #commitAll()} or {@link #revertAll()} respectively. If you never intend to commit the changes
+     *                     use {@link #apply(boolean, Runnable)}.
+     * @param instantApply controls whether the created transaction is a {@link InstantApplyTx} (which is default), else
+     *                     changes are not applied to {@link Node} instances until the end of the transaction and thus
+     *                     not visible until all changes are applied after the task has been executed
+     * @param task         the task to run that contains actions that require a transaction
      */
     void invoke(boolean commit, boolean instantApply, Runnable task);
 
@@ -331,7 +425,7 @@ public interface Context extends AutoCloseable {
      * applicable, although as of v1.2 no longer required, for tasks invoked after the Transaction has stopped recording
      * but before the Transaction has been committed and closed. When this happens depends on whether it is an
      * InstantApplyTx or not; if it is an InstantApplyTx the Transaction will keep recording and applying changes until
-     * {@link Transaction#commit()} is called, if it is not it's until {@link Transaction#apply()} is called.
+     * {@link Transaction.Internals#commit()} is called, if it is not it's until {@link Transaction.Internals#apply()} is called.
      * <p>
      * This is typically used in listeners (for InstantApplyTxs this is only required for the transaction committed
      * event) in which case the returned {@link QueuedTask} will be added to current Transaction and executed
@@ -414,14 +508,8 @@ public interface Context extends AutoCloseable {
     Transaction getTransaction();
 
     /**
-     * Set this Context's Transaction. Used internally to switch between Transaction e.g. for VirtualEvents
-     *
-     * @param transaction to set
-     */
-    void setTransaction(Transaction transaction);
-
-    /**
      * @return the current Transaction, requires an active Transaction
+     * @throws PersistException if no active transaction exists
      */
     Transaction getActiveTransaction();
 
@@ -430,6 +518,8 @@ public interface Context extends AutoCloseable {
      * this returns the canonical file path, else this uses the hash code of the document instance.
      */
     String getMutexKey();
+
+    Internals internal();
 
     /**
      * Specialized Context that may be "bound" to any Object of type E, as in it can easy be retrieved from the {@link JxpBackend}
@@ -446,6 +536,21 @@ public interface Context extends AutoCloseable {
          * @return object of Type E
          */
         E getBindingObject();
+
+    }
+
+    /**
+     * Sub interface for methods intended for internal use to clearly separate them from the regular API while still allowing
+     * access.
+     */
+    interface Internals {
+
+        /**
+         * Set this Context's Transaction. Used internally to switch between Transaction e.g. for VirtualEvents
+         *
+         * @param transaction to set
+         */
+        void setTransaction(Transaction transaction);
 
     }
 

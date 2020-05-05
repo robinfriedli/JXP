@@ -14,10 +14,13 @@ import net.robinfriedli.jxp.api.JxpBackend;
 import net.robinfriedli.jxp.api.JxpBuilder;
 import net.robinfriedli.jxp.api.UninitializedParent;
 import net.robinfriedli.jxp.api.XmlElement;
+import net.robinfriedli.jxp.collections.NodeList;
+import net.robinfriedli.jxp.collections.UninitializedNodeList;
 import net.robinfriedli.jxp.entities.City;
 import net.robinfriedli.jxp.entities.Country;
+import net.robinfriedli.jxp.entities.State;
 import net.robinfriedli.jxp.queries.Conditions;
-import net.robinfriedli.jxp.queries.xpath.XQuery;
+import net.robinfriedli.jxp.queries.Query;
 import net.robinfriedli.jxp.queries.xpath.XQueryBuilder;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -32,6 +35,7 @@ public class LazyContextTest extends AbstractTest {
         return new JxpBuilder()
             .setDefaultContextType(JxpBackend.DefaultContextType.LAZY)
             .mapClass("country", Country.class)
+            .mapClass("state", State.class)
             .mapClass("city", City.class)
             .build();
     }
@@ -70,7 +74,7 @@ public class LazyContextTest extends AbstractTest {
             us.persist(context);
         });
 
-        XQuery query = XQueryBuilder.find("country/city").where(and(
+        XQueryBuilder query = XQueryBuilder.find("country/city").where(and(
             or(
                 attribute("population").greaterEquals(1000000),
                 attribute("population").is(400000)
@@ -107,7 +111,7 @@ public class LazyContextTest extends AbstractTest {
             }
         }
 
-        XQuery query1 = XQueryBuilder.find("country").where(and(
+        XQueryBuilder query1 = XQueryBuilder.find("country").where(and(
             or(
                 and(
                     attribute("sovereign").is(false),
@@ -132,7 +136,7 @@ public class LazyContextTest extends AbstractTest {
             Truth.assertThat(xmlElement.getAttribute("name").getValue()).isAnyOf("United Kingdom", "Schweiz", "England");
         }
 
-        XQuery query2 = XQueryBuilder.find("country/city").where(or(
+        XQueryBuilder query2 = XQueryBuilder.find("country/city").where(or(
             and(
                 not(
                     and(
@@ -190,7 +194,6 @@ public class LazyContextTest extends AbstractTest {
         String parentParentName = parent.getParent().getAttribute("name").getValue();
         XmlElement parentParent = parent.getParent();
         assertEquals(parentParentName, "United Kingdom");
-        assertNull(parentParent.getParent());
         assertTrue(parentParent instanceof Country);
         assertEquals(parentParent.getSubElements().size(), 3);
         assertEquals(parentParent.getSubElementsRecursive().size(), 6);
@@ -200,6 +203,143 @@ public class LazyContextTest extends AbstractTest {
         XmlElement manchesterParent = manchester.getParent();
         assertEquals(manchesterParent.getAttribute("name").getValue(), "Greater Manchester");
         assertEquals(manchesterParent.getParent(), parentParent);
+    }
+
+    @Test
+    public void testGetElements() {
+        CachedContext cachedContext = jxp.createCachedContext(getTestResource("/countries.xml"));
+        LazyContext context = jxp.createLazyContext(getTestResource("/countries.xml"));
+        List<XmlElement> elements = context.getElements();
+        assertEquals(elements.size(), cachedContext.getElements().size());
+
+        Query query = Query.evaluate(Conditions.attribute("name").is("London"));
+        long count = query.execute(context.getElementsRecursive()).count();
+        assertEquals(count, 2);
+
+        context.invoke(false, true, () -> {
+            XmlElement london = query.execute(context.getElementsRecursive()).requireFirstResult();
+            london.delete();
+            long reCount = query.execute(context.getElementsRecursive()).count();
+            assertEquals(reCount, 1);
+            XmlElement remainingLondon = query.execute(context.getElementsRecursive()).requireOnlyResult();
+            remainingLondon.setAttribute("name", "test_change");
+            long reCount2 = query.execute(context.getElementsRecursive()).count();
+            assertEquals(reCount2, 0);
+            long testCount = context.query(Conditions.attribute("name").is("test_change")).count();
+            assertEquals(testCount, 1);
+
+            City city = new City("city", 1);
+            State state = new State("state", 1, Lists.newArrayList(city));
+            Country country = new Country("Country", "Country", true, Lists.newArrayList());
+            country.addSubElement(state);
+            country.persist(context);
+            XmlElement countryResult = context.query(Conditions.attribute("englishName").is("Country")).getOnlyResult();
+            assertNotNull(countryResult);
+            XmlElement stateResult = countryResult.query(Conditions.tagName("state")).getOnlyResult();
+            assertNotNull(stateResult);
+            XmlElement cityResult = stateResult.getSubElement("city");
+            assertNotNull(cityResult);
+            assertEquals(cityResult.getAttribute("population").getInt(), 1);
+
+            country.delete();
+            XmlElement foundCountry = context.query(Conditions.attribute("englishName").is("Country")).getOnlyResult();
+            assertNull(foundCountry);
+            long count1 = context.query(Conditions.attribute("name").is("state")).count();
+            long count2 = context.query(Conditions.attribute("name").is("city")).count();
+            assertEquals(count1, 0);
+            assertEquals(count2, 0);
+
+            country.persist(context);
+            XmlElement foundCountry2 = context.query(Conditions.attribute("englishName").is("Country")).getOnlyResult();
+            assertNotNull(foundCountry2);
+            country.delete();
+            XmlElement foundCountry3 = context.query(Conditions.attribute("englishName").is("Country")).getOnlyResult();
+            assertNull(foundCountry3);
+        });
+
+        context.invoke(false, true, () -> {
+            City city = new City("city", 1);
+            State state = new State("state", 1, Lists.newArrayList(city));
+            Country country = new Country("Country", "Country", true, Lists.newArrayList());
+            country.addSubElement(state);
+            country.persist(context);
+
+            XmlElement changedLondon = context.query(Conditions.attribute("name").is("test_change")).getOnlyResult();
+            assertNotNull(changedLondon);
+            changedLondon.setAttribute("name", "London");
+        });
+
+        long count1 = query.execute(context.getElementsRecursive()).count();
+        assertEquals(count1, 1);
+        XmlElement country = context.query(Conditions.attribute("englishName").is("Country")).getOnlyResult();
+        assertNotNull(country);
+        XmlElement city = country.query(Conditions.attribute("name").is("city")).getOnlyResult();
+        assertNotNull(city);
+        assertEquals(city.getAttribute("population").getInt(), 1);
+
+        context.invoke(false, false, () -> {
+            XmlElement london = query.execute(context.getElementsRecursive()).requireOnlyResult();
+            london.setAttribute("name", "test_change");
+            long count2 = query.execute(context.getElementsRecursive()).count();
+            assertEquals(count2, 1);
+
+            country.delete();
+            long countryCount = context.query(Conditions.attribute("englishName").is("Country")).count();
+            assertEquals(countryCount, 1);
+            long cityCounty = context.query(Conditions.attribute("name").is("city")).count();
+            assertEquals(cityCounty, 1);
+        });
+    }
+
+    @Test
+    public void testMixedQueries() {
+        LazyContext context = jxp.createLazyContext(getTestResource("/fullcountries.xml"));
+        List<XmlElement> relevantElements = context.xPathQuery(XQueryBuilder.find("continent/country").where(attribute("name").startsWith("S")).getXPath(context));
+        XmlElement switzerland = Query.evaluate(Conditions.attribute("name").is("Switzerland")).execute(relevantElements).getOnlyResult();
+        XmlElement sweden = Query.evaluate(Conditions.attribute("name").is("Sweden")).execute(relevantElements).getOnlyResult();
+        assertNotNull(switzerland);
+        assertNotNull(sweden);
+        List<XmlElement> results = Query.evaluate(Conditions.attribute("name").startsWith("Slov")).execute(relevantElements).collect();
+        assertEquals(results.size(), 2);
+        context.invoke(() -> {
+            switzerland.setAttribute("population", 8570000);
+            sweden.setAttribute("population", 10230000);
+            for (XmlElement result : results) {
+                result.delete();
+            }
+        });
+
+
+        List<XmlElement> results2 = context.xPathQuery(XQueryBuilder.find("continent/country").where(attribute("name").startsWith("Slov")).getXPath(context));
+        assertEquals(results2.size(), 0);
+        List<XmlElement> results3 = context.xPathQuery(XQueryBuilder.find("continent/country").where(attribute("name").startsWith("Slov")).getXPath(context));
+        assertEquals(results3.size(), 0);
+        List<XmlElement> switzerlandResults = context.xPathQuery(XQueryBuilder.find("continent/country").where(attribute("name").is("Switzerland")).getXPath(context));
+        assertEquals(switzerlandResults.size(), 1);
+        assertEquals(switzerlandResults.get(0).getAttribute("population").getInt(), 8570000);
+        List<XmlElement> swedenResults = context.xPathQuery(XQueryBuilder.find("continent/country").where(attribute("name").is("Sweden")).getXPath(context));
+        assertEquals(swedenResults.size(), 1);
+        assertEquals(swedenResults.get(0).getAttribute("population").getInt(), 10230000);
+
+        context.persist(String.format("src/test/resources/output/%s%s%s.xml", getClass().getSimpleName(), "@testMixedQueries", System.currentTimeMillis()));
+    }
+
+    @Test
+    public void testLazyInitialization() {
+        LazyContext context = jxp.createLazyContext(getTestResource("/countries.xml"));
+        XmlElement documentElement = context.getDocumentElement();
+        NodeList childNodeList = documentElement.internal().getInternalChildNodeList();
+
+        assertTrue(childNodeList instanceof UninitializedNodeList);
+        UninitializedNodeList uninitializedNodeList = (UninitializedNodeList) childNodeList;
+        assertFalse(uninitializedNodeList.isInitialized());
+
+        XmlElement england = documentElement.requireSubElement("England");
+        NodeList englandChildNodeList = england.internal().getInternalChildNodeList();
+        assertTrue(englandChildNodeList instanceof UninitializedNodeList);
+        UninitializedNodeList uninitializedEnglandNodeList = (UninitializedNodeList) englandChildNodeList;
+        assertFalse(uninitializedEnglandNodeList.isInitialized());
+        assertTrue(uninitializedNodeList.isInitialized());
     }
 
 }

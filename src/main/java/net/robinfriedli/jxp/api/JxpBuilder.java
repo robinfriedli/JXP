@@ -14,9 +14,9 @@ import org.w3c.dom.Document;
 
 public class JxpBuilder {
 
-    private List<JxpEventListener> listeners = Lists.newArrayList();
-    private Set<File> contextFiles = Sets.newHashSet();
-    private Set<Document> contextDocuments = Sets.newHashSet();
+    private final List<JxpEventListener> listeners = Lists.newArrayList();
+    private final Set<File> contextFiles = Sets.newHashSet();
+    private final Set<Document> contextDocuments = Sets.newHashSet();
     private JxpBackend.DefaultContextType defaultContextType = JxpBackend.DefaultContextType.CACHED;
 
     public JxpBuilder addListeners(JxpEventListener... listeners) {

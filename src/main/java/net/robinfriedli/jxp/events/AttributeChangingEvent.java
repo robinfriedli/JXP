@@ -1,6 +1,8 @@
 package net.robinfriedli.jxp.events;
 
 import net.robinfriedli.jxp.api.XmlAttribute;
+import net.robinfriedli.jxp.persist.Context;
+import org.w3c.dom.Element;
 
 public class AttributeChangingEvent extends ElementChangingEvent {
 
@@ -8,16 +10,26 @@ public class AttributeChangingEvent extends ElementChangingEvent {
     private final String oldValue;
     private final String newValue;
 
-    public AttributeChangingEvent(XmlAttribute attribute, String newValue) {
-        super(attribute.getParentElement());
+    private Element persistentElem;
+
+    public AttributeChangingEvent(Context context, XmlAttribute attribute, String newValue) {
+        super(context, attribute.getParentElement());
         this.attribute = attribute;
-        oldValue = String.valueOf(attribute.getValue());
+        oldValue = attribute.getValue();
         this.newValue = newValue;
     }
 
     @Override
-    public void doCommit() {
-        getSource().requireElement().setAttribute(attribute.getAttributeName(), newValue);
+    public void doApply() {
+        persistentElem = getSource().getElement();
+        super.doApply();
+    }
+
+    @Override
+    public void handleCommit() {
+        if (persistentElem != null) {
+            persistentElem.setAttribute(attribute.getAttributeName(), newValue);
+        }
     }
 
     public XmlAttribute getAttribute() {
@@ -34,6 +46,8 @@ public class AttributeChangingEvent extends ElementChangingEvent {
 
     @Override
     protected void revertCommit() {
-        getSource().requireElement().setAttribute(attribute.getAttributeName(), oldValue);
+        if (persistentElem != null) {
+            persistentElem.setAttribute(attribute.getAttributeName(), oldValue);
+        }
     }
 }

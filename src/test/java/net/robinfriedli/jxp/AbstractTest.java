@@ -59,8 +59,8 @@ public abstract class AbstractTest {
     }
 
     /**
-     * Exists so that both non private doWithCopiedContext have the same amount of stack frames after bein called by the
-     * test.
+     * This private third method exists instead of one overload calling the other so that the stack trace is equally
+     * deep for both cases, which is needed when getting the method name of the test for the output file.
      */
     private void doWithCopiedContextInternal(boolean persistAfter, String resourceName, Consumer<Context> action) {
         Context existingContext = jxp.createContext(getTestResource(resourceName));

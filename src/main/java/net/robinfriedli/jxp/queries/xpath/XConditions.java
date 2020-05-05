@@ -3,11 +3,11 @@ package net.robinfriedli.jxp.queries.xpath;
 public final class XConditions {
 
     public static XNode and(XNode... nodes) {
-        return new XSelectorNode("and", nodes);
+        return new XJunctionNode(XJunctionNode.Type.AND, nodes);
     }
 
     public static XNode or(XNode... nodes) {
-        return new XSelectorNode("or", nodes);
+        return new XJunctionNode(XJunctionNode.Type.OR, nodes);
     }
 
     public static XNodeBuilder attribute(String name) {

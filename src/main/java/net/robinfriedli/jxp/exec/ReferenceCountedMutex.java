@@ -11,7 +11,7 @@ public class ReferenceCountedMutex<T> {
 
     private final T key;
     private final Map<T, ReferenceCountedMutex<T>> containingMap;
-    private AtomicInteger rc = new AtomicInteger(0);
+    private final AtomicInteger rc = new AtomicInteger(0);
 
     public ReferenceCountedMutex(T key, Map<T, ReferenceCountedMutex<T>> containingMap) {
         this.key = key;

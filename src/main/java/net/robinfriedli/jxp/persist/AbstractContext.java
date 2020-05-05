@@ -20,8 +20,8 @@ import javax.xml.xpath.XPathFactory;
 
 import org.slf4j.Logger;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
 import net.robinfriedli.jxp.api.JxpBackend;
 import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.exceptions.CommitException;
@@ -48,12 +48,12 @@ public abstract class AbstractContext implements Context {
 
     private final JxpBackend backend;
     private final Logger logger;
-
+    private final InternalControl internalControl = new InternalControl();
+    private final List<Transaction> uncommittedTransactions = Lists.newArrayList();
+    private final ThreadLocal<Transaction> threadTransaction = new ThreadLocal<>();
     private Document document;
     private String path;
     private File file;
-    private List<Transaction> uncommittedTransactions = Lists.newArrayList();
-    private ThreadLocal<Transaction> threadTransaction = new ThreadLocal<>();
 
     public AbstractContext(JxpBackend backend, Document document, Logger logger) {
         this.backend = backend;
@@ -107,7 +107,9 @@ public abstract class AbstractContext implements Context {
         }
 
         if (file.exists()) {
-            file.delete();
+            if (!file.delete()) {
+                throw new PersistException("File could not be deleted");
+            }
             file = null;
         } else {
             throw new IllegalStateException("This Context's file does not exist");
@@ -130,8 +132,15 @@ public abstract class AbstractContext implements Context {
         }
 
         try {
+            // dir only has to be created if absent
+            //noinspection ResultOfMethodCallIgnored
             file.getParentFile().mkdirs();
-            file.createNewFile();
+            boolean newFile = file.createNewFile();
+
+            if (!newFile) {
+                throw new PersistException("Failed to create file");
+            }
+
             this.file = file;
             this.path = path;
             StaticXmlParser.writeToFile(this);
@@ -164,6 +173,9 @@ public abstract class AbstractContext implements Context {
             Node parent = document.importNode(this.document.getDocumentElement(), true);
             document.appendChild(parent);
 
+            if (this instanceof LazyContext) {
+                return new BindableLazyContext<E>(backend, document, objectToBind, logger);
+            }
             return new BindableCachedContext<>(backend, document, objectToBind, logger);
         } catch (ParserConfigurationException e) {
             throw new PersistException("Exception while copying context", e);
@@ -189,24 +201,24 @@ public abstract class AbstractContext implements Context {
     }
 
     @Override
-    public String getRootElem() {
+    public String getRootTag() {
         return document.getDocumentElement().getTagName();
     }
 
     @Override
     public List<XmlElement> getElementsRecursive() {
-        List<XmlElement> elements = Lists.newArrayList();
-        for (XmlElement element : Lists.newArrayList(getElements())) {
-            recursiveAdd(elements, element);
+        ImmutableList.Builder<XmlElement> listBuilder = ImmutableList.builder();
+        for (XmlElement element : getElements()) {
+            recursiveAdd(listBuilder, element);
         }
-        return elements;
+        return listBuilder.build();
     }
 
-    private void recursiveAdd(List<XmlElement> elements, XmlElement element) {
-        elements.add(element);
+    private void recursiveAdd(ImmutableList.Builder<XmlElement> listBuilder, XmlElement element) {
+        listBuilder.add(element);
         if (element.hasSubElements()) {
             for (XmlElement subElement : Lists.newArrayList(element.getSubElements())) {
-                recursiveAdd(elements, subElement);
+                recursiveAdd(listBuilder, subElement);
             }
         }
     }
@@ -301,52 +313,26 @@ public abstract class AbstractContext implements Context {
     protected abstract List<XmlElement> handleXPathResults(List<Element> results);
 
     @Override
-    public void addElements(List<XmlElement> elements) {
-        elements.forEach(this::addElement);
-    }
-
-    @Override
-    public void addElements(XmlElement... elements) {
-        addElements(Arrays.asList(elements));
-    }
-
-    @Override
-    public void removeElements(List<XmlElement> elements) {
-        elements.forEach(this::removeElement);
-    }
-
-    @Override
-    public void removeElements(XmlElement... elements) {
-        removeElements(Arrays.asList(elements));
-    }
-
-    @Override
-    public void commitAll() {
-        Set<Transaction> toRemove = Sets.newHashSet();
+    public synchronized void commitAll() {
         try {
-            Lists.newArrayList(uncommittedTransactions).forEach(tx -> {
+            uncommittedTransactions.forEach(tx -> {
                 try {
-                    tx.commit();
-                    toRemove.add(tx);
+                    tx.internal().commit();
                 } catch (CommitException e) {
-                    throw new PersistException("Exception during commit of transaction " + tx, e);
+                    logger.error("Exception during commit of transaction " + tx, e);
                 }
             });
         } finally {
-            uncommittedTransactions.removeAll(toRemove);
+            uncommittedTransactions.clear();
         }
     }
 
     @Override
-    public void revertAll() {
-        Set<Transaction> toRemove = Sets.newHashSet();
+    public synchronized void revertAll() {
         try {
-            Lists.newArrayList(uncommittedTransactions).forEach(tx -> {
-                tx.rollback();
-                toRemove.add(tx);
-            });
+            uncommittedTransactions.forEach(tx -> tx.internal().rollback());
         } finally {
-            uncommittedTransactions.removeAll(toRemove);
+            uncommittedTransactions.clear();
         }
     }
 
@@ -370,7 +356,7 @@ public abstract class AbstractContext implements Context {
 
     @Override
     public <E> E invoke(Invoker.Mode mode, Callable<E> task) {
-        BaseInvoker invoker = new BaseInvoker();
+        Invoker invoker = new BaseInvoker();
         return invoker.invoke(mode, task, e -> new PersistException("Exception in task", e));
     }
 
@@ -495,11 +481,6 @@ public abstract class AbstractContext implements Context {
     }
 
     @Override
-    public void setTransaction(Transaction transaction) {
-        threadTransaction.set(transaction);
-    }
-
-    @Override
     public Transaction getActiveTransaction() {
         Transaction transaction = threadTransaction.get();
         if (transaction == null) {
@@ -527,11 +508,25 @@ public abstract class AbstractContext implements Context {
         return String.valueOf(document.hashCode());
     }
 
+    @Override
+    public Internals internal() {
+        return internalControl;
+    }
+
     private AbstractTransactionalMode getTransactionMode(boolean instantApply, boolean applyOnly) {
         return AbstractTransactionalMode.Builder.create()
             .setInstantApply(instantApply)
             .setApplyOnly(applyOnly)
             .build(this);
+    }
+
+    protected class InternalControl implements Internals {
+
+        @Override
+        public void setTransaction(Transaction transaction) {
+            threadTransaction.set(transaction);
+        }
+
     }
 
 }

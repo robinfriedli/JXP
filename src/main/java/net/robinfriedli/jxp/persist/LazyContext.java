@@ -26,46 +26,26 @@ import org.w3c.dom.Node;
  */
 public class LazyContext extends AbstractContext {
 
-    private final List<XmlElement> conceivedElements;
-    private final List<XmlElement> deletingElements;
+    private final XmlElement documentElement;
 
     public LazyContext(JxpBackend backend, Document document, Logger logger) {
         super(backend, document, logger);
-        conceivedElements = Lists.newArrayList();
-        deletingElements = Lists.newArrayList();
+        documentElement = StaticXmlElementFactory.instantiateDocumentElement(this, false);
     }
 
     public LazyContext(JxpBackend backend, File file, Logger logger) {
         super(backend, file, logger);
-        conceivedElements = Lists.newArrayList();
-        deletingElements = Lists.newArrayList();
+        documentElement = StaticXmlElementFactory.instantiateDocumentElement(this, false);
+    }
+
+    @Override
+    public XmlElement getDocumentElement() {
+        return documentElement;
     }
 
     @Override
     public List<XmlElement> getElements() {
-        List<XmlElement> persistedElements = StaticXmlElementFactory.instantiateAllElements(this);
-        persistedElements.addAll(conceivedElements);
-        persistedElements.removeAll(deletingElements);
-        return persistedElements;
-    }
-
-    @Override
-    public void addElement(XmlElement element) {
-        if (element.getState() == XmlElement.State.CONCEPTION) {
-            conceivedElements.add(element);
-        }
-    }
-
-    @Override
-    public void removeElement(XmlElement element) {
-        if (element.getState() == XmlElement.State.DELETION) {
-            deletingElements.add(element);
-        }
-    }
-
-    void clear() {
-        conceivedElements.clear();
-        deletingElements.clear();
+        return documentElement.getSubElements();
     }
 
     @Override
@@ -76,7 +56,7 @@ public class LazyContext extends AbstractContext {
             XmlElement xmlElement = StaticXmlElementFactory.instantiatePersistentXmlElement(docElement, this);
             Node parentNode = docElement.getParentNode();
             if (parentNode instanceof Element && !Objects.equals(parentNode, parentNode.getOwnerDocument().getDocumentElement())) {
-                xmlElement.setParent(new UninitializedParent(this, (Element) parentNode, xmlElement));
+                xmlElement.internal().setParent(new UninitializedParent(this, (Element) parentNode, xmlElement));
             }
 
             elementInstances.add(xmlElement);

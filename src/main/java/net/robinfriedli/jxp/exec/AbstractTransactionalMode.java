@@ -3,6 +3,8 @@ package net.robinfriedli.jxp.exec;
 import java.util.List;
 import java.util.concurrent.Callable;
 
+import org.slf4j.Logger;
+
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.exec.modes.ApplyOnlyMode;
 import net.robinfriedli.jxp.exec.modes.CollectingApplyMode;
@@ -11,6 +13,10 @@ import net.robinfriedli.jxp.exec.modes.InstantApplyOnlyMode;
 import net.robinfriedli.jxp.persist.Context;
 import net.robinfriedli.jxp.persist.Transaction;
 
+/**
+ * Mode wrapper that wraps the given task into a Callable that manages opening / committing a transaction before / after
+ * executing the given task. Also executed tasks queued to the created transaction before finishing.
+ */
 public abstract class AbstractTransactionalMode extends AbstractDelegatingModeWrapper {
 
     private final Context context;
@@ -40,19 +46,24 @@ public abstract class AbstractTransactionalMode extends AbstractDelegatingModeWr
 
             try {
                 returnValue = callable.call();
-                activeTransaction.apply();
+                activeTransaction.internal().apply();
                 if (!activeTransaction.isApplyOnly()) {
                     if (shouldCommit) {
-                        activeTransaction.commit(writeToFile);
+                        activeTransaction.internal().commit(writeToFile);
                     } else {
                         context.getUncommittedTransactions().add(activeTransaction);
                     }
                 }
-            } catch (Throwable e) {
-                activeTransaction.assertRollback();
+            } catch (Exception e) {
+                try {
+                    activeTransaction.internal().assertRollback();
+                } catch (Exception e1) {
+                    Logger logger = context.getBackend().getLogger();
+                    logger.error("Exception while rolling back changes", e1);
+                }
                 throw new PersistException(e.getClass().getSimpleName() + " thrown while running task. Closing transaction.", e);
             } finally {
-                List<QueuedTask> queuedTasks = activeTransaction.getQueuedTasks();
+                List<QueuedTask<?>> queuedTasks = activeTransaction.getQueuedTasks();
                 boolean failed = activeTransaction.failed();
                 closeTx();
 
@@ -86,17 +97,17 @@ public abstract class AbstractTransactionalMode extends AbstractDelegatingModeWr
     }
 
     private void closeTx() {
-        context.setTransaction(oldTransaction);
+        context.internal().setTransaction(oldTransaction);
     }
 
     private void openTx() {
-        context.setTransaction(newTransaction);
+        context.internal().setTransaction(newTransaction);
         activeTransaction = newTransaction;
     }
 
     private void switchTx() {
         oldTransaction = activeTransaction;
-        context.setTransaction(newTransaction);
+        context.internal().setTransaction(newTransaction);
         activeTransaction = newTransaction;
     }
 

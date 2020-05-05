@@ -31,14 +31,14 @@ import org.w3c.dom.Document;
 
 public class JxpBackend {
 
-    private static MutexSync<String> mutexSync = new MutexSync<>();
+    private static final MutexSync<String> MUTEX_SYNC = new MutexSync<>();
 
     private final List<Context> contexts;
-    private final List<Context.BindableContext> boundContexts;
+    private final List<Context.BindableContext<?>> boundContexts;
     private final Vector<JxpEventListener> listeners;
     private final Logger logger;
     private final DefaultContextType defaultContextType;
-    private ThreadLocal<Boolean> listenersMuted = ThreadLocal.withInitial(() -> false);
+    private final ThreadLocal<Boolean> listenersMuted = ThreadLocal.withInitial(() -> false);
 
     public JxpBackend(Vector<JxpEventListener> listeners,
                       DefaultContextType defaultContextType) {
@@ -46,7 +46,7 @@ public class JxpBackend {
     }
 
     public JxpBackend(List<Context> contexts,
-                      List<Context.BindableContext> boundContexts,
+                      List<Context.BindableContext<?>> boundContexts,
                       Vector<JxpEventListener> listeners,
                       DefaultContextType defaultContextType) {
         this.contexts = contexts;
@@ -60,7 +60,7 @@ public class JxpBackend {
         return contexts;
     }
 
-    public List<Context.BindableContext> getBoundContexts() {
+    public List<Context.BindableContext<?>> getBoundContexts() {
         return boundContexts;
     }
 
@@ -76,7 +76,7 @@ public class JxpBackend {
     public Context getContext(File file) {
         String canonicalPath = getCanonicalPath(file);
 
-        return mutexSync.evaluate(canonicalPath, () -> {
+        return MUTEX_SYNC.evaluate(canonicalPath, () -> {
             Context existingContext = getExistingContext(file);
 
             if (existingContext != null) {
@@ -97,7 +97,7 @@ public class JxpBackend {
     public Context getContext(Document document) {
         String mutexKey = String.valueOf(document.hashCode());
 
-        return mutexSync.evaluate(mutexKey, () -> {
+        return MUTEX_SYNC.evaluate(mutexKey, () -> {
             Context existingContext = getExistingContext(document);
 
             if (existingContext != null) {
@@ -565,12 +565,16 @@ public class JxpBackend {
         listeners.forEach(emit(listener -> listener.onBeforeFlush(transaction)));
     }
 
+    public Logger getLogger() {
+        return logger;
+    }
+
     private Consumer<JxpEventListener> emit(Consumer<JxpEventListener> consumer) {
         return listener -> {
             if (!listenersMuted.get()) {
                 try {
                     consumer.accept(listener);
-                } catch (Throwable e) {
+                } catch (Exception e) {
                     if (listener.mayInterrupt()) {
                         throw e;
                     } else {

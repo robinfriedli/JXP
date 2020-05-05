@@ -1,99 +1,111 @@
 package net.robinfriedli.jxp.events;
 
-import java.util.List;
-
 import javax.annotation.Nullable;
 
-import com.google.common.collect.Lists;
+import net.robinfriedli.jxp.api.JxpBackend;
+import net.robinfriedli.jxp.api.Node;
 import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.persist.Context;
+import net.robinfriedli.jxp.persist.ElementUtils;
+import org.w3c.dom.Element;
 
 public class ElementDeletingEvent extends Event {
 
     private final XmlElement.State oldState;
-    private final List<RecursiveDeletingEvent> recursiveDeletingEvents;
+
     private XmlElement oldParent;
+    private Node<?> oldPreviousSibling;
+    private Node<?> oldNextSibling;
+    private Element oldElem;
+    private org.w3c.dom.Node previousNeighbor;
+    private org.w3c.dom.Node oldParentNode;
 
-    public ElementDeletingEvent(XmlElement element, XmlElement.State oldState) {
-        super(element);
+    public ElementDeletingEvent(Context context, XmlElement element, XmlElement.State oldState) {
+        super(context, element);
         this.oldState = oldState;
-        element.setState(XmlElement.State.DELETION);
-        recursiveDeletingEvents = Lists.newArrayList();
+        element.internal().setState(XmlElement.State.DELETION);
+    }
+
+    public Node<?> getOldPreviousSibling() {
+        return oldPreviousSibling;
+    }
+
+    public Node<?> getOldNextSibling() {
+        return oldNextSibling;
     }
 
     @Override
-    public void apply() {
-        if (isApplied()) {
-            throw new PersistException("Change has already been applied");
+    public void doApply() {
+        XmlElement source = getSource();
+
+        oldParent = source.getParent();
+        oldPreviousSibling = source.getPreviousSibling();
+        oldNextSibling = source.getNextSibling();
+        if (oldParent != null) {
+            oldParent.internal().removeChild(source);
+            source.internal().removeParent();
         } else {
-            XmlElement source = getSource();
-            if (!source.isSubElement()) {
-                source.getContext().removeElement(source);
-            } else {
-                oldParent = source.getParent();
-                oldParent.getSubElements().remove(source);
-                source.removeParent();
-            }
-
-            if (!recursiveDeletingEvents.isEmpty()) {
-                recursiveDeletingEvents.forEach(RecursiveDeletingEvent::apply);
-            }
-
-            setApplied(true);
-            source.getContext().getBackend().fireElementDeleting(this);
+            throw new UnsupportedOperationException("Cannot delete root document element");
         }
     }
 
     @Override
-    public void revert() {
-        if (isApplied() && !isCommitted()) {
-            if (oldParent == null) {
-                getSource().getContext().addElement(getSource());
-            } else {
-                oldParent.getSubElements().add(getSource());
-                getSource().setParent(oldParent);
-            }
-
-            getSource().setState(oldState);
+    protected void applyPhysical() {
+        XmlElement source = getSource();
+        oldElem = source.getElement();
+        if (oldElem == null) {
+            throw new PersistException(String.format("Cannot delete non-persistent element. %s has either never been persisted or has already been deleted. Previous state: %s", source.toString(), oldState));
         }
-
-        if (!recursiveDeletingEvents.isEmpty()) {
-            recursiveDeletingEvents.forEach(RecursiveDeletingEvent::revert);
-        }
-
-        if (isCommitted()) {
-            Context context = getSource().getContext();
-            // re-persist the element in a new transaction queued after this one, this ensures that all other changes
-            // made to this XmlElement will be reverted so that the XmlElement will be persisted in its former state
-            context.futureInvoke(false, false, () -> {
-                getSource().persist(context, oldParent);
-                return null;
-            });
-        }
+        previousNeighbor = oldElem.getNextSibling();
+        source.internal().removeElement();
     }
 
     @Override
-    public void commit() {
-        getSource().phantomize();
-        setCommitted(true);
+    public void doRevert() {
+        XmlElement source = getSource();
+        source.internal().setElement(oldElem);
 
-        if (!recursiveDeletingEvents.isEmpty()) {
-            recursiveDeletingEvents.forEach(RecursiveDeletingEvent::commit);
+        if (oldParent == null) {
+            throw new IllegalStateException("Old parent of " + source.toString() + " null while reverting deletion");
+        } else {
+            oldParent.internal().adoptChild(source, oldPreviousSibling, true);
+            source.internal().setParent(oldParent);
         }
+
+        source.internal().setState(oldState);
+    }
+
+    @Override
+    protected void revertCommit() {
+        if (oldElem == null) {
+            throw new IllegalStateException("Old element not known. Deletion was never physically applied");
+        }
+        if (oldParent == null) {
+            throw new IllegalStateException("Old parent of " + getSource().toString() + " was null while reverting commit of deletion");
+        }
+        if (oldParentNode == null) {
+            throw new IllegalStateException("Old parent node of " + getSource().toString() + " was null while reverting commit of deletion");
+        }
+
+        getSource().internal().addToDOM(oldElem, oldParentNode, previousNeighbor, false);
+    }
+
+    @Override
+    public void doCommit() {
+        oldParentNode = oldElem.getParentNode();
+        ElementUtils.destroy(oldElem);
+        getSource().internal().setState(XmlElement.State.PHANTOM);
+    }
+
+    @Override
+    protected void dispatchEvent(JxpBackend backend) {
+        backend.fireElementDeleting(this);
     }
 
     @Nullable
     public XmlElement getOldParent() {
         return oldParent;
-    }
-
-    public void addRecursiveEvent(RecursiveDeletingEvent event) {
-        recursiveDeletingEvents.add(event);
-    }
-
-    public List<RecursiveDeletingEvent> getRecursiveDeletingEvents() {
-        return recursiveDeletingEvents;
     }
 
 }

@@ -5,23 +5,23 @@ import java.util.List;
 import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
 
-public class XSelectorNode implements XNode {
+public class XJunctionNode implements XNode {
 
     private final XNode[] nodes;
-    private final String selector;
+    private final Type type;
 
-    public XSelectorNode(String selector, XNode... nodes) {
-        this.selector = selector;
+    public XJunctionNode(Type type, XNode... nodes) {
+        this.type = type;
         this.nodes = nodes;
     }
 
     @Override
     public String asString() {
-        Joiner selectorJoiner = Joiner.on(" " + selector + " ");
+        Joiner selectorJoiner = Joiner.on(" " + type.name().toLowerCase() + " ");
         List<String> nodes = Lists.newArrayList();
         for (XNode node : this.nodes) {
-            if (node instanceof XSelectorNode) {
-                // put sub selector in brackets
+            if (node instanceof XJunctionNode) {
+                // put sub junction in brackets
                 nodes.add("(" + node.asString() + ")");
             } else {
                 nodes.add(node.asString());
@@ -29,4 +29,9 @@ public class XSelectorNode implements XNode {
         }
         return selectorJoiner.join(nodes);
     }
+
+    public enum Type {
+        AND, OR
+    }
+
 }

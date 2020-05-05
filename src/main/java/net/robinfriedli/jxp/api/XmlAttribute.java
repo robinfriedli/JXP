@@ -1,6 +1,7 @@
 package net.robinfriedli.jxp.api;
 
 import net.robinfriedli.jxp.events.AttributeChangingEvent;
+import net.robinfriedli.jxp.events.AttributeCreatedEvent;
 import net.robinfriedli.jxp.events.AttributeDeletedEvent;
 
 public class XmlAttribute {
@@ -30,16 +31,16 @@ public class XmlAttribute {
     }
 
     public String getValue() {
-        return this.value;
+        return value;
     }
 
     public void setValue(Object value) {
         String stringValue = value instanceof String ? (String) value : StringConverter.reverse(value);
-        parentElement.addChange(new AttributeChangingEvent(this, stringValue));
+        parentElement.internal().addChange(new AttributeChangingEvent(parentElement.getContext(), this, stringValue));
     }
 
     public void remove() {
-        parentElement.addChange(new AttributeDeletedEvent(parentElement, this));
+        parentElement.internal().addChange(new AttributeDeletedEvent(parentElement.getContext(), parentElement, this));
     }
 
     public <V> V getValue(Class<V> target) {
@@ -88,7 +89,6 @@ public class XmlAttribute {
         } else {
             value = change.getNewValue();
         }
-        change.setApplied(true);
     }
 
     /**
@@ -108,6 +108,7 @@ public class XmlAttribute {
 
         @Override
         public String getValue() {
+            recheck();
             if (definitiveAttribute == null) {
                 return "";
             } else {
@@ -117,16 +118,23 @@ public class XmlAttribute {
 
         @Override
         public void setValue(Object value) {
+            recheck();
             if (definitiveAttribute == null) {
-                definitiveAttribute = new XmlAttribute(getParentElement(), getAttributeName());
-                getParentElement().getAttributeMap().put(getAttributeName(), definitiveAttribute);
+                XmlElement parentElement = getParentElement();
+                definitiveAttribute = new XmlAttribute(parentElement, getAttributeName(), value);
+                if (parentElement.isDetached()) {
+                    parentElement.internal().getInternalAttributeMap().put(getAttributeName(), definitiveAttribute);
+                } else {
+                    parentElement.internal().addChange(new AttributeCreatedEvent(parentElement.getContext(), definitiveAttribute));
+                }
+            } else {
+                definitiveAttribute.setValue(value);
             }
-
-            definitiveAttribute.setValue(value);
         }
 
         @Override
         public void remove() {
+            recheck();
             if (definitiveAttribute == null) {
                 throw new IllegalArgumentException(String.format("No such attribute '%s' on '%s'", getAttributeName(), getParentElement()));
             }
@@ -136,6 +144,7 @@ public class XmlAttribute {
 
         @Override
         public <V> V getValue(Class<V> target) {
+            recheck();
             if (definitiveAttribute == null) {
                 return StringConverter.getEmptyValue(target);
             }
@@ -150,6 +159,15 @@ public class XmlAttribute {
         @Override
         public void revertChange(AttributeChangingEvent change) {
             throw new UnsupportedOperationException();
+        }
+
+        /**
+         * Check again if the attribute exists now
+         */
+        private void recheck() {
+            if (definitiveAttribute == null) {
+                definitiveAttribute = getParentElement().internal().getInternalAttributeMap().get(getAttributeName());
+            }
         }
     }
 

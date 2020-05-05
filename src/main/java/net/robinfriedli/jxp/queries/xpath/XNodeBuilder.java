@@ -22,7 +22,7 @@ public final class XNodeBuilder {
     @SafeVarargs
     public final <E> XNode in(E... values) {
         XNode[] nodes = Arrays.stream(values).map(this::is).toArray(XNode[]::new);
-        return new XSelectorNode("or", nodes);
+        return new XJunctionNode(XJunctionNode.Type.OR, nodes);
     }
 
     public XNode greaterThan(Comparable<? extends Number> number) {
@@ -51,7 +51,7 @@ public final class XNodeBuilder {
         XConditionNode greaterThanNode = new XConditionNode(substringLeft + ">=" + substringRight);
         XFunctionNode substringFunc = new XFunctionNode("substring", left, substringLeft + " - " + substringRight + " + 1");
         XComparingNode compareFunc = new XComparingNode(Quotes.escape(s), substringFunc.asString(), "=");
-        return new XSelectorNode("and", greaterThanNode, compareFunc);
+        return new XJunctionNode(XJunctionNode.Type.AND, greaterThanNode, compareFunc);
     }
 
     public XNode contains(String s) {

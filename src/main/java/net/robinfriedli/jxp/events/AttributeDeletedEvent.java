@@ -2,19 +2,31 @@ package net.robinfriedli.jxp.events;
 
 import net.robinfriedli.jxp.api.XmlAttribute;
 import net.robinfriedli.jxp.api.XmlElement;
+import net.robinfriedli.jxp.persist.Context;
+import org.w3c.dom.Element;
 
 public class AttributeDeletedEvent extends ElementChangingEvent {
 
     private final XmlAttribute attribute;
 
-    public AttributeDeletedEvent(XmlElement source, XmlAttribute attribute) {
-        super(source);
+    private Element persistentElement;
+
+    public AttributeDeletedEvent(Context context, XmlElement source, XmlAttribute attribute) {
+        super(context, source);
         this.attribute = attribute;
     }
 
     @Override
-    public void doCommit() {
-        getSource().requireElement().removeAttribute(attribute.getAttributeName());
+    public void doApply() {
+        persistentElement = getSource().getElement();
+        super.doApply();
+    }
+
+    @Override
+    public void handleCommit() {
+        if (persistentElement != null) {
+            persistentElement.removeAttribute(attribute.getAttributeName());
+        }
     }
 
     public XmlAttribute getAttribute() {
@@ -23,6 +35,8 @@ public class AttributeDeletedEvent extends ElementChangingEvent {
 
     @Override
     protected void revertCommit() {
-        getSource().requireElement().setAttribute(attribute.getAttributeName(), attribute.getValue());
+        if (persistentElement != null) {
+            persistentElement.setAttribute(attribute.getAttributeName(), attribute.getValue());
+        }
     }
 }

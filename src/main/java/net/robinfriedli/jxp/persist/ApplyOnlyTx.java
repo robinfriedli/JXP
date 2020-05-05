@@ -9,19 +9,31 @@ import org.w3c.dom.Element;
  * locate the Element in the first place meaning all obvious use cases for this class vanished. Only use if you know
  * what you are doing.
  */
-public class ApplyOnlyTx extends BaseTransaction {
+public class ApplyOnlyTx extends AbstractTransaction {
+
+    private final InternalControl internalControl = new InternalControl();
 
     public ApplyOnlyTx(Context context) {
         super(context);
     }
 
     @Override
-    public void commit(boolean writeToFile) {
-        throw new UnsupportedOperationException("Attempting to commit an apply-only Transaction");
-    }
-
-    @Override
     public boolean isApplyOnly() {
         return true;
     }
+
+    @Override
+    public Internals internal() {
+        return internalControl;
+    }
+
+    private class InternalControl extends DefaultInternalControl {
+
+        @Override
+        public void commit(boolean writeToFile) {
+            throw new UnsupportedOperationException("Attempting to commit an apply-only Transaction");
+        }
+
+    }
+
 }

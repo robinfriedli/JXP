@@ -6,26 +6,25 @@ import java.util.Map;
 
 import javax.annotation.Nullable;
 
-import com.google.common.collect.Lists;
 import net.robinfriedli.jxp.api.AbstractXmlElement;
-import net.robinfriedli.jxp.api.XmlElement;
+import net.robinfriedli.jxp.api.Node;
+import net.robinfriedli.jxp.collections.NodeList;
 import net.robinfriedli.jxp.persist.Context;
 import org.w3c.dom.Element;
 
 public class State extends AbstractXmlElement {
 
     @SuppressWarnings("unused")
-    public State(Element element, Context context) {
-        super(element, context);
-    }
-
-    @SuppressWarnings("unused")
-    public State(Element element, List<XmlElement> subElements, Context context) {
+    public State(Element element, NodeList subElements, Context context) {
         super(element, subElements, context);
     }
 
     public State(String name, int population, List<City> cities) {
-        super("state", buildAttributeMap(name, population), Lists.newArrayList(cities));
+        super("state", buildAttributeMap(name, population), cities);
+    }
+
+    public State(String tagName, List<Node<?>> childNodes, Map<String, ?> attributeMap) {
+        super(tagName, childNodes, attributeMap);
     }
 
     private static Map<String, ?> buildAttributeMap(String name, int population) {

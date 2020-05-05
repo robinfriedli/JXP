@@ -5,10 +5,12 @@ import java.util.List;
 import java.util.Map;
 
 import com.google.common.collect.Lists;
+import net.robinfriedli.jxp.exceptions.PersistException;
 import org.w3c.dom.Element;
 import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
+import org.w3c.dom.Text;
 
 public class ElementUtils {
 
@@ -38,13 +40,15 @@ public class ElementUtils {
     }
 
     // gets called for the old Element when an XmlElement gets bound to a new Element (typically subelements)
-    public static void destroy(Element element) {
+    public static void destroy(Node element) {
         // might be called when a child element gets added to a different parent, thus setting a new Element on an existing
         // XmlElement instance (via XmlElement#setElement), in this case the element may have already been
         // detached from its old parent if XmlElement#removeSubElement was called before adding it to the new parent
         Node parentNode = element.getParentNode();
         if (parentNode != null) {
             parentNode.removeChild(element);
+        } else {
+            throw new PersistException("Cannot destroy node that does not have a parent. Either the node is the document root or it isn't part of the tree.");
         }
     }
 
@@ -65,6 +69,20 @@ public class ElementUtils {
             Node node = childNodes.item(i);
             if (node instanceof Element) {
                 elements.add((Element) node);
+            }
+        }
+
+        return elements;
+    }
+
+    public static List<Node> getChildNodes(Element parent) {
+        NodeList childNodes = parent.getChildNodes();
+        List<Node> elements = Lists.newArrayList();
+
+        for (int i = 0; i < childNodes.getLength(); i++) {
+            Node node = childNodes.item(i);
+            if (node instanceof Element || node instanceof Text) {
+                elements.add(node);
             }
         }
 

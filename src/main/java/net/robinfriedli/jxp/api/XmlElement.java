@@ -6,44 +6,47 @@ import java.util.function.Predicate;
 
 import javax.annotation.Nullable;
 
+import net.robinfriedli.jxp.collections.NodeList;
 import net.robinfriedli.jxp.events.ElementChangingEvent;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.persist.Context;
 import net.robinfriedli.jxp.queries.Conditions;
 import net.robinfriedli.jxp.queries.QueryResult;
 import net.robinfriedli.jxp.queries.ResultStream;
+import org.w3c.dom.Document;
 import org.w3c.dom.Element;
+import org.w3c.dom.Text;
 
 /**
- * Enables classes to be persisted as XML elements. Extend {@link AbstractXmlElement} to persist your elements using
- * {@link Context#invoke(Runnable)}.
+ * Interface for the JXP representation of DOM {@link Element} instances, does not include text nodes.
  */
-public interface XmlElement {
+public interface XmlElement extends Node<Element> {
 
     /**
-     * Persists a new XmlElement in {@link State#CONCEPTION} to the XML file
+     * Persists a new XmlElement in {@link State#CONCEPTION} to the XML file. This method calls {@link #persist(Context, XmlElement)}
+     * with the document element as newParent.
      *
-     * @param context the context for the document to save to element to
+     * @param context the context for the document to save the element to
      */
     void persist(Context context);
 
     /**
-     * Method used by {@link #addSubElement(XmlElement)} to append this subElement to a parent
+     * Persist this element as the child of the provided parent. This method is used by {@link #addSubElement(Node)}.
+     * Since you may not create new root elements the only way newParent may be null is when this method is called recursively
+     * internally to persist all children this element may already have in which case the parent is already set the children
+     * have already been adopted.
+     * <p>
+     * Generally library users should use {@link #persist(Context)} or {@link #addSubElement(Node)} instead of using
+     * this method directly.
      *
-     * @param context   the context for the document to save to element to
+     * @param context   the context for the document to save the element to
      * @param newParent the parent element
      */
     void persist(Context context, XmlElement newParent);
 
     /**
-     * @return true if this XmlElement is not in any Context. This is the case when an XmlElement has just been
-     * instantiated before persisting it to a Context
-     */
-    boolean isDetached();
-
-    /**
      * Creates a new XmlElement with the attributes and text content of this one. This does not require a transaction as
-     * it does not persist the copy
+     * it does not persist the copy. This overrides {@link Node#copy(boolean, boolean)} to specialise the return type.
      *
      * @param copySubElements             also copies all subelements of this element
      * @param instantiateContributedClass tries to instantiate one of your classes contributed to the {@link JxpBackend}
@@ -54,23 +57,11 @@ public interface XmlElement {
     XmlElement copy(boolean copySubElements, boolean instantiateContributedClass);
 
     /**
-     * Removes the {@link Element} represented by this XmlElement from the XML document. Phantoms can be persisted again
-     * by using the {@link #persist(Context)} method, or, for subElements, by adding it to a new parent using {@link #addSubElement(XmlElement)}
-     * after removing it from the old one. This method should generally just be used internally.
-     */
-    void phantomize();
-
-    /**
      * @return the actual {@link Element} in the XML document represented by this XmlElement. Null if in State CONCEPTION
-     * or PHANTOM.
+     * or PHANTOM. Changes made to this Element are not reflected by JXP.
      */
     @Nullable
     Element getElement();
-
-    /**
-     * Sets the created {@link Element} for this XmlElement. Used after a new XmlElement has been persisted.
-     */
-    void setElement(Element element);
 
     /**
      * Like {@link #getElement()} but throws Exception if null
@@ -78,24 +69,7 @@ public interface XmlElement {
     Element requireElement() throws IllegalStateException;
 
     /**
-     * Set the parent of this XmlElement to null. Used for subElements when {@link #removeSubElement(XmlElement)} is called
-     */
-    void removeParent();
-
-    /**
-     * @return the parent Element of this XmlElement
-     */
-    XmlElement getParent();
-
-    /**
-     * Defines the parent of a subElement. This is not permitted if the element already has a parent, the element first
-     * has to be removed from the old parent using {@link #removeSubElement(XmlElement)}. This method should generally
-     * only be used internally.
-     */
-    void setParent(XmlElement parent);
-
-    /**
-     * @return true if this XmlElement has a parent element
+     * @return true if this XmlElement has a parent element that is not the Document's root element.
      */
     boolean isSubElement();
 
@@ -105,8 +79,10 @@ public interface XmlElement {
     boolean isPersisted();
 
     /**
-     * @return {@link Context} of this XmlElement
+     * @return {@link Context} of this XmlElement, may be null if detached, i.e. the XmlElement has been instantiated but
+     * not yet persisted to a Context (state {@link State#CONCEPTION}).
      */
+    @Nullable
     Context getContext();
 
     /**
@@ -115,14 +91,9 @@ public interface XmlElement {
     String getTagName();
 
     /**
-     * @return a new list instance containing all {@link XmlAttribute} instances on this XmlElement
+     * @return a new immutable list instance containing all {@link XmlAttribute} instances currently on this XmlElement
      */
     List<XmlAttribute> getAttributes();
-
-    /**
-     * @return the actual map instance holding the {@link XmlAttribute} instances for this XmlElement
-     */
-    Map<String, XmlAttribute> getAttributeMap();
 
     /**
      * @param attributeName name of attribute
@@ -154,49 +125,115 @@ public interface XmlElement {
     boolean hasAttribute(String attributeName);
 
     /**
-     * Add new XmlElement to SubElements
+     * Add a new child node to this XmlElement.
      *
-     * @param element to add
+     * @param element the non-persistent node to add
      */
-    void addSubElement(XmlElement element);
+    void addSubElement(Node<?> element);
 
     /**
-     * Add new XmlElements to SubElements
+     * Add several new child nodes to this XmlElement in the order they appear in the provided list.
      *
-     * @param elements to add
+     * @param elements the non-persistent nodes to add
      */
-    void addSubElements(List<XmlElement> elements);
+    void addSubElements(List<Node<?>> elements);
 
     /**
-     * Add new XmlElements to SubElements
+     * Add several new child nodes to this XmlElement in the order they appear in the provided array.
      *
-     * @param elements to add
+     * @param elements the non-persistent nodes to add
      */
-    void addSubElements(XmlElement... elements);
+    void addSubElements(Node<?>... elements);
 
     /**
-     * Remove XmlElement from SubElements
+     * Add a new child element to this XmlElement and position it after the provided existing child node.
      *
-     * @param element to remove
+     * @param refNode    the existing node after which to insert the new node
+     * @param childToAdd the new non-persistent element to add
+     * @throws IllegalArgumentException if the provided refNode is not a child of this XmlElement
      */
-    void removeSubElement(XmlElement element);
+    void insertSubElementAfter(Node<?> refNode, Node<?> childToAdd);
 
     /**
-     * Remove XmlElements from SubElements
+     * Add new child nodes to this XmlElement and position them all after the provided existing child node in the
+     * order in which they appear in the provided list.
      *
-     * @param elements to remove
+     * @param refNode       the existing node after which to insert the new node
+     * @param childrenToAdd the new non-persistent nodes to add
+     * @throws IllegalArgumentException if the provided refNode is not a child of this XmlElement
      */
-    void removeSubElements(List<XmlElement> elements);
+    void insertSubElementsAfter(Node<?> refNode, List<Node<?>> childrenToAdd);
 
     /**
-     * Remove XmlElements from SubElements
+     * Add new child nodes to this XmlElement and position them all after the provided existing child node in the
+     * order in which they appear in the provided list.
      *
-     * @param elements to remove
+     * @param refNode       the existing node after which to insert the new node
+     * @param childrenToAdd the new non-persistent nodes to add
+     * @throws IllegalArgumentException if the provided refNode is not a child of this XmlElement
      */
-    void removeSubElements(XmlElement... elements);
+    void insertSubElementsAfter(Node<?> refNode, Node<?>... childrenToAdd);
 
     /**
-     * @return all SubElements. This exposes the internal list directly.
+     * Add a new child element to this XmlElement and position it before the provided existing child node.
+     *
+     * @param refNode    the existing node before which to insert the new node
+     * @param childToAdd the new non-persistent element to add
+     * @throws IllegalArgumentException if the provided refNode is not a child of this XmlElement
+     */
+    void insertSubElementBefore(Node<?> refNode, Node<?> childToAdd);
+
+    /**
+     * Add new child nodes to this XmlElement and position them all before the provided existing child node in the
+     * order in which they appear in the provided list.
+     *
+     * @param refNode       the existing node before which to insert the new node
+     * @param childrenToAdd the new non-persistent nodes to add
+     * @throws IllegalArgumentException if the provided refNode is not a child of this XmlElement
+     */
+    void insertSubElementsBefore(Node<?> refNode, List<Node<?>> childrenToAdd);
+
+    /**
+     * Add new child nodes to this XmlElement and position them all before the provided existing child node in the
+     * order in which they appear in the provided list.
+     *
+     * @param refNode       the existing node before which to insert the new node
+     * @param childrenToAdd the new non-persistent nodes to add
+     * @throws IllegalArgumentException if the provided refNode is not a child of this XmlElement
+     */
+    void insertSubElementsBefore(Node<?> refNode, Node<?>... childrenToAdd);
+
+    /**
+     * Remove an existing child node from this XmlElement.
+     *
+     * @param element the existing child node to delete
+     * @throws IllegalArgumentException if any of the provided sub elements is not actually a sub element of this element
+     */
+    void removeSubElement(Node<?> element);
+
+    /**
+     * Remove existing child nodes from this XmlElement.
+     *
+     * @param elements the existing child nodes to delete
+     * @throws IllegalArgumentException if any of the provided sub elements is not actually a sub element of this element
+     */
+    void removeSubElements(List<Node<?>> elements);
+
+    /**
+     * Remove existing child nodes from this XmlElement.
+     *
+     * @param elements the existing child nodes to delete
+     * @throws IllegalArgumentException if any of the provided sub elements is not actually a sub element of this element
+     */
+    void removeSubElements(Node<?>... elements);
+
+    /**
+     * @return all child nodes of this XmlElement, including all sub elements and text nodes.
+     */
+    List<Node<?>> getChildNodes();
+
+    /**
+     * @return an unmodifiable collection of all SubElements.
      */
     List<XmlElement> getSubElements();
 
@@ -260,9 +297,16 @@ public interface XmlElement {
     boolean hasSubElement(String id);
 
     /**
+     * @return all children that are TextNodes, meaning they represent a {@link Text} node.
+     */
+    List<TextNode> getTextNodes();
+
+    /**
      * Get the text content of the XML element.
      * <p>
      * E.g. <element>textContent</element>
+     * <p>
+     * In case of mixed content or several text nodes this joins all text nodes on {@link System#lineSeparator()}.
      *
      * @return text content of XML element
      */
@@ -272,15 +316,52 @@ public interface XmlElement {
      * Set the text content of the XML element.
      * <p>
      * E.g. <element>textContent</element>
+     * <p>
+     * If there already is exactly one {@link TextNode} this will update the existing text node. Else this will delete
+     * all existing text nodes and add a new text node as last child of this XmlElement.
      *
      * @param textContent to set
      */
     void setTextContent(String textContent);
 
     /**
-     * @return true if this XmlElement has a text content body
+     * @return true if this XmlElement has any child text nodes.
      */
     boolean hasTextContent();
+
+    /**
+     * Create a new {@link TextNode} and add it as last child to this XmlElement.
+     *
+     * @param textContent the text content of the new text node.
+     */
+    default void addTextNode(String textContent) {
+        TextNode textNode = new TextNode(textContent);
+        addSubElement(textNode);
+    }
+
+    /**
+     * Create a new {@link TextNode} and insert it after the specified existing child node.
+     *
+     * @param refNode     the existing child node after which to insert the text node
+     * @param textContent the text content of the new text node
+     * @throws IllegalArgumentException if the provided refNode is not a child of this XmlElement
+     */
+    default void insertTextNodeAfter(Node<?> refNode, String textContent) {
+        TextNode textNode = new TextNode(textContent);
+        insertSubElementAfter(refNode, textNode);
+    }
+
+    /**
+     * Create a new {@link TextNode} and insert it before the specified existing child node.
+     *
+     * @param refNode     the existing child node before which to insert the text node
+     * @param textContent the text content of the new text node
+     * @throws IllegalArgumentException if the provided refNode is not a child of this XmlElement
+     */
+    default void insertTextNodeBefore(Node<?> refNode, String textContent) {
+        TextNode textNode = new TextNode(textContent);
+        insertSubElementsBefore(refNode, textNode);
+    }
 
     /**
      * Define some way to identify this XmlElement instance, ideally through either one of its attributes or text content.
@@ -316,47 +397,9 @@ public interface XmlElement {
     /**
      * Delete this XmlElement. Creates an {@link net.robinfriedli.jxp.events.ElementDeletingEvent} which, when applied,
      * will remove the element from its Context and set this XmlElement to {@link State#PHANTOM}. Only when committing
-     * the XmlElement will be fully removed from its XML file.
+     * the XmlElement will be fully removed from the DOM document and its XML file.
      */
     void delete();
-
-    /**
-     * Add an {@link ElementChangingEvent} to this XmlElement
-     *
-     * @param change to add
-     */
-    void addChange(ElementChangingEvent change);
-
-    /**
-     * Remove an {@link ElementChangingEvent} from this XmlElement
-     *
-     * @param change to remove
-     */
-    void removeChange(ElementChangingEvent change);
-
-    /**
-     * Applies an {@link ElementChangingEvent} to this XmlElement. The source of the event must be this XmlElement or else
-     * an {@link UnsupportedOperationException} is thrown.
-     *
-     * @param change {@link ElementChangingEvent} to apply
-     * @throws UnsupportedOperationException if source of event does not equal this XmlElement
-     * @throws PersistException              if {@link Context} has no {@link net.robinfriedli.jxp.persist.Transaction}
-     */
-    void applyChange(ElementChangingEvent change) throws UnsupportedOperationException, PersistException;
-
-    /**
-     * Reverts a change made to this XmlElement. This occurs when an exception is thrown during commit.
-     *
-     * @param change {@link ElementChangingEvent} change to revert
-     * @throws UnsupportedOperationException
-     * @throws PersistException
-     */
-    void revertChange(ElementChangingEvent change) throws UnsupportedOperationException, PersistException;
-
-    /**
-     * @return all {@link ElementChangingEvent} on this XmlElement. This exposes the internal list directly.
-     */
-    List<ElementChangingEvent> getChanges();
 
     /**
      * @return true if this XmlElement has uncommitted {@link ElementChangingEvent}s
@@ -394,13 +437,6 @@ public interface XmlElement {
     State getState();
 
     /**
-     * Set the {@link State} of this XmlElement
-     *
-     * @param state to set
-     */
-    void setState(State state);
-
-    /**
      * Get all subElements that are instance of {@link E}
      *
      * @param c   Class to check
@@ -435,28 +471,41 @@ public interface XmlElement {
     <E extends XmlElement> ResultStream<E> query(Predicate<XmlElement> condition, Class<E> type);
 
     /**
+     * @return an interface that provides access to library internals
+     */
+    Internals internal();
+
+    /**
      * The state of the in memory representation of the XML element
      */
     enum State {
-        /**
-         * XmlElement instance has just been created but not yet persisted to the XML document
-         */
-        CONCEPTION(false),
 
         /**
-         * The XmlElement is in the process of being saved to the document and is already treated as physical
+         * XmlElement instance has just been created but not yet persisted to the XML document.
+         * All changes made to this element are applied immediately as there is no need to update its XML element representation,
+         * this also means changes do not necessarily require a transaction but without a transaction write-access is
+         * not synchronised across threads.
          */
-        PERSISTING(true),
+        CONCEPTION(false, false),
+
+        /**
+         * {@link XmlElement#persist(Context)} has already been called on this element in the current transaction but
+         * the transaction hasn't been committed yet. Those elements are treated as physical elements already even though
+         * their physical {@link Element} representation has not been created and added to the {@link Document} yet as changes
+         * made to those elements will get committed after the {@link Element} is created and thus those changes required
+         * to be committed as well (changes such as adding or removing a child element).
+         */
+        PERSISTING(true, true),
 
         /**
          * Element exists and has no uncommitted changes
          */
-        CLEAN(true),
+        CLEAN(true, false),
 
         /**
          * Element exists in XML file but has uncommitted changes
          */
-        TOUCHED(true),
+        TOUCHED(true, false),
 
         /**
          * Unlike PHANTOM the Element has not actually been deleted yet and still exists in the XML document. This is
@@ -467,26 +516,147 @@ public interface XmlElement {
          * in the same transaction, it would get persisted with all changes applied. Thus eliminating the need to commit
          * changes as with normal physical elements.
          */
-        DELETION(false),
+        DELETION(false, true),
 
         /**
-         * The XmlElement's element has been removed from the XML document
+         * The XmlElement has been removed from the XML document. This instance may be re-persisted by calling {@link XmlElement#persist(Context)}.
+         * All changes made to this element are applied immediately as there is no need to update its XML element representation,
+         * this also means changes do not necessarily require a transaction but without a transaction write-access is
+         * not synchronised across threads.
          */
-        PHANTOM(false);
+        PHANTOM(false, false);
 
-        private boolean physical;
+        private final boolean physical;
+        private final boolean transitioning;
 
-        State(boolean physical) {
+        State(boolean physical, boolean transitioning) {
             this.physical = physical;
+            this.transitioning = transitioning;
         }
 
         /**
-         * @return true if the the element has a physical element in the XML file in this state. Defines whether or not
+         * @return true if the element has a physical element in the XML file in this state. Defines whether or not
          * changes made to an element need to be committed.
          */
         public boolean isPhysical() {
             return physical;
         }
+
+        /**
+         * @return true if this element is currently transitioning from being physical to being virtual or vice versa in
+         * the current transaction, i.e. if this element is currently being persisted or deleted
+         */
+        public boolean isTransitioning() {
+            return transitioning;
+        }
+    }
+
+    /**
+     * Sub interface for methods intended for internal use to clearly separate them from the regular API while still allowing
+     * access.
+     */
+    interface Internals extends Node.Internals<Element> {
+
+        /**
+         * Sets the created {@link Element} for this XmlElement. Used after a new XmlElement has been persisted.
+         */
+        void setElement(Element element);
+
+        /**
+         * Set the parent of this XmlElement to null. Used for subElements when {@link #removeSubElement(Node)} is called
+         */
+        void removeParent();
+
+        /**
+         * Defines the parent of a subElement. This is not permitted if the element already has a parent, the element first
+         * has to be removed from the old parent using {@link #removeSubElement(Node)}.
+         */
+        void setParent(XmlElement parent);
+
+        /**
+         * Adopt a child node. This adds this node to the end of this node's child nodes and handles setting the parent
+         * and next / previous sibling of the child node.
+         *
+         * @param node the node to adopt
+         */
+        default void adoptChild(Node<?> node) {
+            adoptChild(node, null, true);
+        }
+
+        /**
+         * Insert a child node at a position relative to the provided child node. If refNode is null the node will be inserted
+         * at the bottom of the list if insertAfter is true, else at the top of the list.
+         *
+         * @param nodeToAdopt the node to add
+         * @param refNode     the existing child node after or before which to add the new node
+         * @param insertAfter if true the new node will be inserted after the provided refNode, else before
+         */
+        void adoptChild(Node<?> nodeToAdopt, @Nullable Node<?> refNode, boolean insertAfter);
+
+        /**
+         * Remove a child node from this node. This removes the provided node from this node's child nodes and handles
+         * un-setting the node's parent and next / previous sibling.
+         *
+         * @param node the node to remove
+         * @throws IllegalArgumentException if the provided node is not a child of this node
+         */
+        void removeChild(Node<?> node);
+
+        /**
+         * @return the actual map instance holding the {@link XmlAttribute} instances for this XmlElement
+         */
+        Map<String, XmlAttribute> getInternalAttributeMap();
+
+        /**
+         * @return the internal list instance that stores the subelements
+         */
+        NodeList getInternalChildNodeList();
+
+        /**
+         * Add an {@link ElementChangingEvent} to this XmlElement
+         *
+         * @param change to add
+         */
+        void addChange(ElementChangingEvent change);
+
+        /**
+         * Remove an {@link ElementChangingEvent} from this XmlElement
+         *
+         * @param change to remove
+         */
+        void removeChange(ElementChangingEvent change);
+
+        /**
+         * Applies an {@link ElementChangingEvent} to this XmlElement. The source of the event must be this XmlElement or else
+         * an {@link UnsupportedOperationException} is thrown.
+         *
+         * @param change {@link ElementChangingEvent} to apply
+         * @throws UnsupportedOperationException if source of event does not equal this XmlElement
+         * @throws PersistException              if {@link Context} has no {@link net.robinfriedli.jxp.persist.Transaction}
+         */
+        void applyChange(ElementChangingEvent change) throws UnsupportedOperationException, PersistException;
+
+        /**
+         * Reverts a change made to this XmlElement. This occurs when an exception is thrown during commit.
+         *
+         * @param change {@link ElementChangingEvent} change to revert
+         * @throws UnsupportedOperationException
+         * @throws PersistException
+         */
+        void revertChange(ElementChangingEvent change) throws UnsupportedOperationException, PersistException;
+
+        /**
+         * @return all {@link ElementChangingEvent} on this XmlElement. This exposes the internal list directly.
+         */
+        List<ElementChangingEvent> getChanges();
+
+        /**
+         * Set the {@link State} of this XmlElement
+         *
+         * @param state to set
+         */
+        void setState(State state);
+
     }
 
 }

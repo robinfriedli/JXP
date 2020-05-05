@@ -28,7 +28,7 @@ public class StringConverter {
 
         try {
             return converter.convert(s);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             throw new ConversionException(e);
         }
     }
@@ -38,7 +38,7 @@ public class StringConverter {
         StringConversionContribution<V> converter = (StringConversionContribution<V>) getConverter(objectToReverse.getClass());
         try {
             return converter.reverse(objectToReverse);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             throw new ConversionException(e);
         }
     }
@@ -49,7 +49,7 @@ public class StringConverter {
         }
     }
 
-    public static boolean canConvert(Class target) {
+    public static boolean canConvert(Class<?> target) {
         return stringConversions.stream().anyMatch(c -> c.getClassToConvert().equals(target));
     }
 

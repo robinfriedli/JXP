@@ -6,7 +6,7 @@ Java XML Persistence API
     <dependency>
       <groupId>net.robinfriedli</groupId>
       <artifactId>JXP</artifactId>
-      <version>1.4</version>
+      <version>2.0</version>
       <type>pom</type>
     </dependency>
 
@@ -20,7 +20,7 @@ Java XML Persistence API
 ## Gradle
 ```gradle
     dependencies {
-        compile 'net.robinfriedli:JXP:1.4'
+        implementation "net.robinfriedli:JXP:2.0"
     }
 
     repositories {
@@ -68,16 +68,17 @@ Initializing a Context:
 
 ## AbstractXmlElement and BaseXmlElement
 
-AbstractXmlElement is the class to extend for any class you want to persist as an XML element. Its default implementation,
-BaseXmlElement, is instantiated for each XML element in your file when creating a new Context via the
-DefaultPersistenceManager#getAllElements method, if no class is mapped to the corresponding XML tag name in the
-JxpBackend. It is recommended however that you create your own implementation forAbstractXmlElement which allows you to
-define a unique id for your element (BaseXmlElement has null as id), which is useful for loading XmlElements more easily.
-Then instantiate your own class by simply mapping your class with the matching tag name and add it to the JxpBackend
-using JxpBackend#mapClass
+AbstractXmlElement is the class to extend for any type you want to persist as an XML element. Its default implementation,
+BaseXmlElement, is instantiated for each XML element in your file when creating a new CachedContext (as opposed to
+LazyContext (CachedContext is default), more about that later) via the StaticXmlElementFactory#instantiateAllElements method if no class is
+mapped to the corresponding XML tag name in the JxpBackend. It is recommended however that you create your own
+implementation for AbstractXmlElement which allows you to define a unique id for your element (BaseXmlElement has null as id),
+which is useful for loading XmlElements more easily and generally helps with managing and querying XML elements. Additionally it obviously
+allows you to add your methods. To make JXP instantiate your own class simply map your class with the matching tag name
+and add it to the JxpBackend using JxpBuilder#mapClass, you can also add additional classes later using StaticXmlElementFactory#mapClass.
 
-When extending AbstractXmlElement you need to pass the tag name of your XML element, a Map with all attributes
-(with the attribute name as key and value as value) and a List of sub elements to the constructor of the super class.
+When extending AbstractXmlElement you need to pass the tag name of your XML element plus optionally a Map with all attributes
+(with the attribute name as key and value as value), a List of sub elements and / or to the constructor of the super class.
 Your XmlElement should have two constructors; one to create a new XmlElement with the provided values and one to
 instantiate the XmlElement when loading it from the file, to which you pass the corresponding org.w3c.dom.Element
 
@@ -90,6 +91,9 @@ Example:
 
     import javax.annotation.Nullable;
 
+    import net.robinfriedli.jxp.api.AbstractXmlElement;
+    import net.robinfriedli.jxp.api.XmlElement;
+    import net.robinfriedli.jxp.collections.NodeList;
     import net.robinfriedli.jxp.persist.Context;
 
     public class City extends AbstractXmlElement {
@@ -98,9 +102,9 @@ Example:
             super("city", buildAttributes(name, population));
         }
 
-        // constructor invoked by DefaultPersistenceManager when instantiating a persistent XmlElement
-        public City(Element element, Context context) {
-            super(element, context);
+        // constructor invoked by StaticXmlElementFactory when instantiating a persistent XmlElement
+        public City(Element element, NodeList subElements, Context context) {
+            super(element, subElements, context);
         }
 
         @Nullable
@@ -127,17 +131,20 @@ Example:
     import javax.annotation.Nullable;
 
     import com.google.common.collect.Lists;
+    import net.robinfriedli.jxp.api.AbstractXmlElement;
+    import net.robinfriedli.jxp.api.XmlElement;
+    import net.robinfriedli.jxp.collections.NodeList;
     import net.robinfriedli.jxp.persist.Context;
 
     public class Country extends AbstractXmlElement {
 
         public Country(String name, String englishName, boolean sovereign, List<City> cities) {
-            super("country", buildAttributes(name, englishName, sovereign), Lists.newArrayList(cities));
+            super("country", buildAttributes(name, englishName, sovereign), cities);
         }
 
-        // constructor invoked by DefaultPersistenceManager when instantiating a persistent XmlElement
-        public Country(Element element, List<City> cities, Context context) {
-            super(element, Lists.newArrayList(cities), context);
+        // constructor invoked by StaticXmlElementFactory when instantiating a persistent XmlElement
+        public Country(Element element, NodeList subElements, Context context) {
+            super(element, subElements, context);
         }
 
         @Nullable
@@ -171,7 +178,6 @@ parameter | description
 first parameter (optional): | commit (boolean), set true if all changes made during this task should be committed to the XML file. If false the transaction will be added to the Context's uncommitted transactions. Default: true
 second parameter (optional): | instantApply (boolean). Defines whether all changes should be applied to the XmlElement instance upon adding it to the transaction immediately. That means all changes are available within the invoked task and not only after the transaction. E.g. if false changing an attribute using elem.setAttribute("test", "value") and then calling elem.getAttribute("test").getValue() will still return the old value if still inside the transaction
 third parameter: | the actual task to run, a Callable or Runnable depending on whether your task should return something or not
-fourth parameter (optional): | any Object to set as this Context's environment variable. Could be any object you need anywhere in Context with this transaction. E.g. say you're developing a Discord bot and you've implemented an EventListener that sends a message after an Element has been added. In this case you could set the MessageChannel the command came from as envVar to send the message to the right channel.
 
 There are two other variants of the invoke method: invokeWithoutListeners() and futureInvoke(). futureInvoke, if used
 within a Transaction, adds a QueuedTask to the Transaction which will be executed after the Transaction has finished. This
@@ -197,7 +203,7 @@ Example:
         ch.persist(context);
 
         Country unitedKingdom = context.getElement("United Kingdom", Country.class);
-        unitedKingdom.setAttribute("sovereign", Boolean.toString(true));
+        unitedKingdom.setAttribute("sovereign", true);
 
         Country france = context.getElement("France", Country.class);
         france.delete();
@@ -221,7 +227,7 @@ Async example:
 
 ```
 
-In the back the used parameters are used to build the mode the executed task will be wrapped in. For more advanced options
+The parameters are used to build the mode the executed task will be wrapped in. For more advanced options
 you can create the mode yourself or even implement your own ModeWrapper to create additional modes the task may be invoked
 with.
 

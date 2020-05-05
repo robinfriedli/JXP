@@ -4,13 +4,14 @@ import java.util.List;
 
 import javax.annotation.Nullable;
 
+import net.robinfriedli.jxp.api.JxpBackend;
 import net.robinfriedli.jxp.api.XmlElement;
-import net.robinfriedli.jxp.exceptions.PersistException;
+import net.robinfriedli.jxp.persist.Context;
 
 public abstract class ElementChangingEvent extends Event {
 
-    public ElementChangingEvent(XmlElement source) {
-        super(source);
+    public ElementChangingEvent(Context context, XmlElement source) {
+        super(context, source);
     }
 
     @Nullable
@@ -24,8 +25,23 @@ public abstract class ElementChangingEvent extends Event {
     }
 
     @Nullable
-    public TextContentChangingEvent getChangedTextContent() {
-        return unwrap(TextContentChangingEvent.class);
+    public AttributeCreatedEvent getAddedAttribute() {
+        return unwrap(AttributeCreatedEvent.class);
+    }
+
+    @Nullable
+    public TextNodeChangingEvent getChangedTextContent() {
+        return unwrap(TextNodeChangingEvent.class);
+    }
+
+    @Nullable
+    public TextNodeCreatedEvent getAddedTextNode() {
+        return unwrap(TextNodeCreatedEvent.class);
+    }
+
+    @Nullable
+    public TextNodeDeletingEvent getDeletedTextNode() {
+        return unwrap(TextNodeDeletingEvent.class);
     }
 
     @Nullable
@@ -38,14 +54,8 @@ public abstract class ElementChangingEvent extends Event {
     }
 
     @Override
-    public void apply() {
-        if (isApplied()) {
-            throw new PersistException("Change has already been applied");
-        } else {
-            getSource().applyChange(this);
-            setApplied(true);
-            getSource().getContext().getBackend().fireElementChanging(this);
-        }
+    public void doApply() {
+        getSource().internal().applyChange(this);
     }
 
     @Nullable
@@ -55,31 +65,32 @@ public abstract class ElementChangingEvent extends Event {
     }
 
     @Override
-    public void revert() {
-        if (isApplied()) {
-            getSource().revertChange(this);
-            if (isCommitted()) {
-                revertCommit();
-            } else {
-                getSource().removeChange(this);
-            }
+    public void doRevert() {
+        getSource().internal().revertChange(this);
+        if (!isCommitted()) {
+            getSource().internal().removeChange(this);
         }
     }
 
-    protected abstract void doCommit();
-
-    protected abstract void revertCommit();
+    protected abstract void handleCommit();
 
     @Override
-    public void commit() {
-        doCommit();
+    public void doCommit() {
+        handleCommit();
+        getSource().internal().removeChange(this);
+    }
 
-        setCommitted(true);
-        getSource().removeChange(this);
+    @Override
+    protected void dispatchEvent(JxpBackend backend) {
+        backend.fireElementChanging(this);
     }
 
     @Deprecated
     public boolean isEmpty() {
+        return false;
+    }
+
+    public boolean shouldTreatAsPhysicalIfTransitioning() {
         return false;
     }
 

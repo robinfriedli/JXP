@@ -1,108 +1,105 @@
 package net.robinfriedli.jxp.events;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.List;
 
+import net.robinfriedli.jxp.api.JxpBackend;
+import net.robinfriedli.jxp.api.Node;
 import net.robinfriedli.jxp.api.XmlAttribute;
 import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.exceptions.PersistException;
+import net.robinfriedli.jxp.persist.Context;
+import net.robinfriedli.jxp.persist.ElementUtils;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
 public class ElementCreatedEvent extends Event {
 
-    private final String textContent;
-    private final Map<String, String> attributeMap;
-    private XmlElement newParent;
+    private final XmlElement newParent;
+    private final Node<?> refNode;
+    private final boolean insertAfter;
 
-    public ElementCreatedEvent(XmlElement element) {
-        this(element, null);
-    }
+    private Element createdElement;
+    private XmlElement effectiveParent;
+    private Element parentElem;
 
-    public ElementCreatedEvent(XmlElement element, XmlElement newParent) {
-        super(element);
+    public ElementCreatedEvent(Context context, XmlElement element, XmlElement newParent, Node<?> refNode, boolean insertAfter) {
+        super(context, element);
         this.newParent = newParent;
-        textContent = element.getTextContent();
-        attributeMap = new HashMap<>();
+        this.refNode = refNode;
+        this.insertAfter = insertAfter;
 
-        for (XmlAttribute attribute : element.getAttributes()) {
-            attributeMap.put(attribute.getAttributeName(), attribute.getValue());
-        }
-
-        element.setState(XmlElement.State.PERSISTING);
+        element.internal().setState(XmlElement.State.PERSISTING);
     }
 
     @Override
-    public void apply() {
-        if (isApplied()) {
-            throw new PersistException("Change has already been applied");
-        } else {
-            XmlElement source = getSource();
-
-            if (newParent != null) {
-                source.setParent(newParent);
-            }
-
-            if (!source.isSubElement()) {
-                source.getContext().addElement(source);
-            } else if (newParent != null) {
-                newParent.getSubElements().add(source);
-            }
-            setApplied(true);
-            getSource().getContext().getBackend().fireElementCreating(this);
-        }
-    }
-
-    @Override
-    public void revert() {
-        if (isApplied()) {
-            XmlElement source = getSource();
-            if (!source.isSubElement()) {
-                source.getContext().removeElement(source);
-            } else {
-                XmlElement parent = source.getParent();
-                parent.getSubElements().remove(source);
-                source.removeParent();
-            }
-        }
-
-        if (isCommitted()) {
-            getSource().phantomize();
-        }
-    }
-
-    @Override
-    public void commit() {
+    public void doApply() {
         XmlElement source = getSource();
-        Document document = source.getContext().getDocument();
 
-        Element elem = document.createElement(source.getTagName());
-
-        for (String attributeName : attributeMap.keySet()) {
-            elem.setAttribute(attributeName, attributeMap.get(attributeName));
+        if (newParent != null) {
+            source.internal().setParent(newParent);
+            if (refNode != null) {
+                newParent.internal().adoptChild(source, refNode, insertAfter);
+            } else {
+                newParent.internal().adoptChild(source);
+            }
+        } else if (source.getParent() == null) {
+            throw new PersistException("Cannot persist as root element, requires a parent.");
         }
 
-        if (source.hasTextContent()) {
-            elem.setTextContent(textContent);
+        effectiveParent = source.getParent();
+    }
+
+    @Override
+    protected void applyPhysical() {
+        XmlElement source = getSource();
+        Document document = getContext().getDocument();
+        XmlElement.Internals internalControl = source.internal();
+
+        createdElement = document.createElement(source.getTagName());
+        List<XmlAttribute> attributes = source.getAttributes();
+        for (XmlAttribute attribute : attributes) {
+            createdElement.setAttribute(attribute.getAttributeName(), attribute.getValue());
         }
 
-        Element parentElem;
-        if (source.isSubElement()) {
-            parentElem = source.getParent().requireElement();
-        } else {
-            parentElem = document.getDocumentElement();
+        internalControl.setElement(createdElement);
+
+        parentElem = effectiveParent.getElement();
+    }
+
+    @Override
+    public void doRevert() {
+        XmlElement source = getSource();
+        source.internal().removeElement();
+        effectiveParent.internal().removeChild(source);
+        source.internal().removeParent();
+
+        source.internal().setState(XmlElement.State.CONCEPTION);
+    }
+
+    @Override
+    protected void revertCommit() {
+        ElementUtils.destroy(createdElement);
+    }
+
+    @Override
+    public void doCommit() {
+        if (createdElement == null) {
+            throw new IllegalStateException("Element was never created. Event was never physically applied.");
         }
 
-        parentElem.appendChild(elem);
-        source.setElement(elem);
+        XmlElement source = getSource();
+        source.internal().addToDOM(createdElement, parentElem, refNode, insertAfter);
 
         if (!source.hasChanges()) {
-            source.setState(XmlElement.State.CLEAN);
+            source.internal().setState(XmlElement.State.CLEAN);
         } else {
-            source.setState(XmlElement.State.TOUCHED);
+            source.internal().setState(XmlElement.State.TOUCHED);
         }
+    }
 
-        setCommitted(true);
+    @Override
+    protected void dispatchEvent(JxpBackend backend) {
+        backend.fireElementCreating(this);
     }
 
     public XmlElement getNewParent() {

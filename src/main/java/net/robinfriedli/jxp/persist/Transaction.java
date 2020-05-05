@@ -1,7 +1,6 @@
 package net.robinfriedli.jxp.persist;
 
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.Callable;
 
 import net.robinfriedli.jxp.api.XmlElement;
@@ -37,16 +36,8 @@ public interface Transaction {
     Context getContext();
 
     /**
-     * Capture a change, creation or deletion of an XmlElement
-     *
-     * @param change the event to add to this transaction
+     * @return an immutable view of all changes added to this transaction
      */
-    void addChange(Event change);
-
-    void addChanges(List<Event> changes);
-
-    void addChanges(Event... changes);
-
     List<Event> getChanges();
 
     /**
@@ -68,7 +59,7 @@ public interface Transaction {
     /**
      * @return all elements for which changes were recorded since the last flush, i.e. in state TOUCHED
      */
-    Set<XmlElement> getChangedElements();
+    List<XmlElement> getChangedElements();
 
     /**
      * @return all elements that were deleted since the last flush
@@ -78,7 +69,7 @@ public interface Transaction {
     /**
      * @return all elements that were affected in any way, created, changed or deleted, since the last flush
      */
-    Set<XmlElement> getAffectedElements();
+    List<XmlElement> getAffectedElements();
 
     /**
      * @return true if the transaction failed an is rolling back
@@ -90,44 +81,12 @@ public interface Transaction {
      *
      * @param queuedTask the queued task
      */
-    void queueTask(QueuedTask queuedTask);
-
-    List<QueuedTask> getQueuedTasks();
+    void queueTask(QueuedTask<?> queuedTask);
 
     /**
-     * Apply all recorded changes to XmlElement instances. In case of an {@link InstantApplyTx} each event is applied as
-     * soon as it's added to the transaction. Else this is called after the task finished, meaning changes are not visible
-     * during the task.
+     * @return an immutable view of all tasks queued to this transaction
      */
-    void apply();
-
-    /**
-     * Flushes all recorded changes and, if the Context is persistent, writes to the file.
-     *
-     * @param writeToFile whether the changes should be written to the file afterwards if necessary
-     */
-    void commit(boolean writeToFile) throws CommitException;
-
-    default void commit() throws CommitException {
-        commit(true);
-    }
-
-    /**
-     * Flushes changes to the DOM document and clears recorded changes. Regularly this happens during the commit but in
-     * case of a {@link SequentialTx} this can happen several times during the transaction. This does not write to the
-     * file.
-     */
-    void flush() throws CommitException;
-
-    /**
-     * Revert all changes when the transaction fails and prevents it from being committed
-     */
-    void rollback();
-
-    /**
-     * Roll back the transaction if not already rolling back
-     */
-    void assertRollback();
+    List<QueuedTask<?>> getQueuedTasks();
 
     /**
      * @return true if this is an apply-only transaction, meaning no commit is made, since 0.7 this is largely deprecated,
@@ -146,7 +105,8 @@ public interface Transaction {
     boolean isActive();
 
     /**
-     * @return true if no change has ever been recorded by this transaction, even before the last flush
+     * @return true only if no change has ever been recorded by this transaction, otherwise return false even if those
+     * changes have already been flushed.
      */
     boolean isEmpty();
 
@@ -155,14 +115,9 @@ public interface Transaction {
      */
     State getState();
 
-    void setState(State state);
-
-    /**
-     * set the status of this transaction to failed, relevant for queued tasks
-     */
-    void fail();
-
     boolean failed();
+
+    Internals internal();
 
     enum State {
 
@@ -215,4 +170,70 @@ public interface Transaction {
         }
 
     }
+
+    /**
+     * Sub interface for methods intended for internal use to clearly separate them from the regular API while still allowing
+     * access.
+     */
+    interface Internals {
+
+        /**
+         * Capture a change, creation or deletion of an XmlElement
+         *
+         * @param change the event to add to this transaction
+         */
+        void addChange(Event change);
+
+        void addChanges(List<Event> changes);
+
+        void addChanges(Event... changes);
+
+        /**
+         * Apply all recorded changes to XmlElement instances. In case of an {@link InstantApplyTx} each event is applied as
+         * soon as it's added to the transaction. Else this is called after the task finished, meaning changes are not visible
+         * during the task.
+         */
+        void apply();
+
+        /**
+         * Flushes all recorded changes and, if the Context is persistent, writes to the file.
+         *
+         * @param writeToFile whether the changes should be written to the file afterwards if necessary
+         */
+        void commit(boolean writeToFile) throws CommitException;
+
+        default void commit() throws CommitException {
+            commit(true);
+        }
+
+        /**
+         * Flushes changes to the DOM document and clears recorded changes. Regularly this happens during the commit but in
+         * case of a {@link SequentialTx} this can happen several times during the transaction. This does not write to the
+         * file.
+         */
+        void flush() throws CommitException;
+
+        /**
+         * Revert all changes when the transaction fails and prevents it from being committed
+         */
+        void rollback();
+
+        /**
+         * Roll back the transaction if not already rolling back
+         */
+        void assertRollback();
+
+        void setState(State state);
+
+        /**
+         * set the status of this transaction to failed, relevant for queued tasks
+         */
+        void fail();
+
+        List<Event> getInternalChangesList();
+
+        List<QueuedTask<?>> getInternalQueuedTasksList();
+
+    }
+
 }

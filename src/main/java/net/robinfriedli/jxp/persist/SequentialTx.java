@@ -19,14 +19,24 @@ public class SequentialTx extends InstantApplyTx {
     }
 
     @Override
-    public void addChange(Event change) {
-        if (getChanges().size() == sequence) {
-            try {
-                flush();
-            } catch (CommitException e) {
-                throw new PersistException("Exception in flush", e);
-            }
-        }
-        super.addChange(change);
+    protected InstantApplyInternalControl createControl() {
+        return new InternalControl();
     }
+
+    private class InternalControl extends InstantApplyInternalControl {
+
+        @Override
+        public void addChange(Event change) {
+            if (getChanges().size() == sequence) {
+                try {
+                    flush();
+                } catch (CommitException e) {
+                    throw new PersistException("Exception in flush", e);
+                }
+            }
+            super.addChange(change);
+        }
+
+    }
+
 }

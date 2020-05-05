@@ -1,14 +1,12 @@
 package net.robinfriedli.jxp.api;
 
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.function.Predicate;
 
 import javax.annotation.Nullable;
 
-import net.robinfriedli.jxp.events.ElementChangingEvent;
-import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.persist.Context;
 import net.robinfriedli.jxp.queries.ResultStream;
 import org.w3c.dom.Element;
@@ -33,13 +31,14 @@ public class UninitializedParent implements XmlElement {
     }
 
     private XmlElement initialize() {
-        XmlElement instantiatedParent = StaticXmlElementFactory.instantiatePersistentXmlElement(element, context, child.requireElement());
-        child.setParent(instantiatedParent);
-        instantiatedParent.getSubElements().add(child);
+        XmlElement instantiatedParent = StaticXmlElementFactory.instantiatePersistentXmlElement(element, context, Collections.singleton(child));
+        child.internal().setParent(instantiatedParent);
         Node parentNode = element.getParentNode();
 
         if (parentNode instanceof Element && !Objects.equals(parentNode, parentNode.getOwnerDocument().getDocumentElement())) {
-            instantiatedParent.setParent(new UninitializedParent(context, (Element) parentNode, instantiatedParent));
+            instantiatedParent.internal().setParent(new UninitializedParent(context, (Element) parentNode, instantiatedParent));
+        } else if (parentNode instanceof Element && Objects.equals(parentNode, parentNode.getOwnerDocument().getDocumentElement())) {
+            instantiatedParent.internal().setParent(context.getDocumentElement());
         }
 
         initialized = instantiatedParent;
@@ -65,6 +64,11 @@ public class UninitializedParent implements XmlElement {
     }
 
     @Override
+    public void persist(Context context, XmlElement newParent, @Nullable net.robinfriedli.jxp.api.Node<?> refNode, boolean insertAfter) {
+        getInitialized().persist(context, newParent, refNode, insertAfter);
+    }
+
+    @Override
     public boolean isDetached() {
         return getInitialized().isDetached();
     }
@@ -72,11 +76,6 @@ public class UninitializedParent implements XmlElement {
     @Override
     public XmlElement copy(boolean copySubElements, boolean instantiateContributedClass) {
         return getInitialized().copy(copySubElements, instantiateContributedClass);
-    }
-
-    @Override
-    public void phantomize() {
-        getInitialized().phantomize();
     }
 
     @Nullable
@@ -90,11 +89,6 @@ public class UninitializedParent implements XmlElement {
     }
 
     @Override
-    public void setElement(Element element) {
-        getInitialized().setElement(element);
-    }
-
-    @Override
     public Element requireElement() throws IllegalStateException {
         if (initialized == null) {
             return element;
@@ -103,19 +97,21 @@ public class UninitializedParent implements XmlElement {
         return getInitialized().requireElement();
     }
 
+    @Nullable
     @Override
-    public void removeParent() {
-        getInitialized().removeParent();
+    public net.robinfriedli.jxp.api.Node<?> getPreviousSibling() {
+        return getInitialized().getPreviousSibling();
+    }
+
+    @Nullable
+    @Override
+    public net.robinfriedli.jxp.api.Node<?> getNextSibling() {
+        return getInitialized().getNextSibling();
     }
 
     @Override
     public XmlElement getParent() {
         return getInitialized().getParent();
-    }
-
-    @Override
-    public void setParent(XmlElement parent) {
-        getInitialized().getParent();
     }
 
     @Override
@@ -150,11 +146,6 @@ public class UninitializedParent implements XmlElement {
     }
 
     @Override
-    public Map<String, XmlAttribute> getAttributeMap() {
-        return getInitialized().getAttributeMap();
-    }
-
-    @Override
     public XmlAttribute getAttribute(String attributeName) {
         return getInitialized().getAttribute(attributeName);
     }
@@ -175,33 +166,68 @@ public class UninitializedParent implements XmlElement {
     }
 
     @Override
-    public void addSubElement(XmlElement element) {
+    public void addSubElement(net.robinfriedli.jxp.api.Node<?> element) {
         getInitialized().addSubElement(element);
     }
 
     @Override
-    public void addSubElements(List<XmlElement> elements) {
+    public void addSubElements(List<net.robinfriedli.jxp.api.Node<?>> elements) {
         getInitialized().addSubElements(elements);
     }
 
     @Override
-    public void addSubElements(XmlElement... elements) {
+    public void addSubElements(net.robinfriedli.jxp.api.Node<?>... elements) {
         getInitialized().addSubElements(elements);
     }
 
     @Override
-    public void removeSubElement(XmlElement element) {
+    public void insertSubElementAfter(net.robinfriedli.jxp.api.Node<?> refNode, net.robinfriedli.jxp.api.Node<?> childToAdd) {
+        getInitialized().insertSubElementAfter(refNode, childToAdd);
+    }
+
+    @Override
+    public void insertSubElementsAfter(net.robinfriedli.jxp.api.Node<?> refNode, List<net.robinfriedli.jxp.api.Node<?>> childrenToAdd) {
+        getInitialized().insertSubElementsAfter(refNode, childrenToAdd);
+    }
+
+    @Override
+    public void insertSubElementsAfter(net.robinfriedli.jxp.api.Node<?> refNode, net.robinfriedli.jxp.api.Node<?>... childrenToAdd) {
+        getInitialized().insertSubElementsAfter(refNode, childrenToAdd);
+    }
+
+    @Override
+    public void insertSubElementBefore(net.robinfriedli.jxp.api.Node<?> refNode, net.robinfriedli.jxp.api.Node<?> childToAdd) {
+        getInitialized().insertSubElementBefore(refNode, childToAdd);
+    }
+
+    @Override
+    public void insertSubElementsBefore(net.robinfriedli.jxp.api.Node<?> refNode, List<net.robinfriedli.jxp.api.Node<?>> childrenToAdd) {
+        getInitialized().insertSubElementsBefore(refNode, childrenToAdd);
+    }
+
+    @Override
+    public void insertSubElementsBefore(net.robinfriedli.jxp.api.Node<?> refNode, net.robinfriedli.jxp.api.Node<?>... childrenToAdd) {
+        getInitialized().insertSubElementsBefore(refNode, childrenToAdd);
+    }
+
+    @Override
+    public void removeSubElement(net.robinfriedli.jxp.api.Node<?> element) {
         getInitialized().removeSubElement(element);
     }
 
     @Override
-    public void removeSubElements(List<XmlElement> elements) {
+    public void removeSubElements(List<net.robinfriedli.jxp.api.Node<?>> elements) {
         getInitialized().removeSubElements(elements);
     }
 
     @Override
-    public void removeSubElements(XmlElement... elements) {
+    public void removeSubElements(net.robinfriedli.jxp.api.Node<?>... elements) {
         getInitialized().removeSubElements(elements);
+    }
+
+    @Override
+    public List<net.robinfriedli.jxp.api.Node<?>> getChildNodes() {
+        return getInitialized().getChildNodes();
     }
 
     @Override
@@ -260,6 +286,11 @@ public class UninitializedParent implements XmlElement {
     }
 
     @Override
+    public List<TextNode> getTextNodes() {
+        return getInitialized().getTextNodes();
+    }
+
+    @Override
     public String getTextContent() {
         return getInitialized().getTextContent();
     }
@@ -294,31 +325,6 @@ public class UninitializedParent implements XmlElement {
     @Override
     public void delete() {
         getInitialized().delete();
-    }
-
-    @Override
-    public void addChange(ElementChangingEvent change) {
-        getInitialized().addChange(change);
-    }
-
-    @Override
-    public void removeChange(ElementChangingEvent change) {
-        getInitialized().removeChange(change);
-    }
-
-    @Override
-    public void applyChange(ElementChangingEvent change) throws UnsupportedOperationException, PersistException {
-        getInitialized().applyChange(change);
-    }
-
-    @Override
-    public void revertChange(ElementChangingEvent change) throws UnsupportedOperationException, PersistException {
-        getInitialized().revertChange(change);
-    }
-
-    @Override
-    public List<ElementChangingEvent> getChanges() {
-        return getInitialized().getChanges();
     }
 
     @Override
@@ -357,11 +363,6 @@ public class UninitializedParent implements XmlElement {
     }
 
     @Override
-    public void setState(State state) {
-        getInitialized().setState(state);
-    }
-
-    @Override
     public <E extends XmlElement> List<E> getInstancesOf(Class<E> c) {
         return getInitialized().getInstancesOf(c);
     }
@@ -379,5 +380,10 @@ public class UninitializedParent implements XmlElement {
     @Override
     public <E extends XmlElement> ResultStream<E> query(Predicate<XmlElement> condition, Class<E> type) {
         return getInitialized().query(condition, type);
+    }
+
+    @Override
+    public Internals internal() {
+        return getInitialized().internal();
     }
 }

@@ -7,24 +7,20 @@ import java.util.Map;
 import javax.annotation.Nullable;
 
 import net.robinfriedli.jxp.api.AbstractXmlElement;
-import net.robinfriedli.jxp.api.XmlElement;
+import net.robinfriedli.jxp.api.Node;
+import net.robinfriedli.jxp.collections.NodeList;
 import net.robinfriedli.jxp.persist.Context;
 import org.w3c.dom.Element;
 
 public class City extends AbstractXmlElement {
 
     @SuppressWarnings("unused")
-    public City(Element element, Context context) {
-        super(element, context);
-    }
-
-    @SuppressWarnings("unused")
-    public City(Element element, List<XmlElement> subElements, Context context) {
+    public City(Element element, NodeList subElements, Context context) {
         super(element, subElements, context);
     }
 
-    public City(String tagName, Map<String, ?> attributeMap, List<XmlElement> subElements, String textContent) {
-        super(tagName, attributeMap, subElements, textContent);
+    public City(String tagName, List<Node<?>> childNodes, Map<String, ?> attributeMap) {
+        super(tagName, childNodes, attributeMap);
     }
 
     public City(String name, int population) {

@@ -15,6 +15,7 @@ import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.entities.City;
 import net.robinfriedli.jxp.entities.Country;
 import net.robinfriedli.jxp.entities.State;
+import net.robinfriedli.jxp.events.Event;
 import net.robinfriedli.jxp.events.JxpEventListener;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.exec.AbstractTransactionalMode;
@@ -270,7 +271,7 @@ public class TransactionTest extends AbstractTest {
 
     @Test
     public void testRollback() {
-        doWithCopiedContext(false, "/countries.xml", context -> {
+        doWithCopiedContext(true, "/countries.xml", context -> {
             XmlElement england = context.requireElement("England");
             XmlElement london = england.requireSubElement("London");
             context.invoke(() -> {
@@ -280,29 +281,34 @@ public class TransactionTest extends AbstractTest {
 
             context.invoke(() -> england.addSubElement(london));
 
-            // expect CommitException
-            // test if rolling back a committed ElementDeletingElement works when a change made to the same element fails after
-            // that. Normally the next change would not even get committed when the element gets deleted so we need to change the
-            // state and then delete the element manually for the commit to fail
-            expectException(PersistException.class, () -> context.invoke(() -> {
-                england.delete();
-                england.setState(XmlElement.State.CLEAN);
-                england.setAttribute("englishName", "testRollback");
-                england.phantomize();
-            }));
+            ForceRollBackListener forceRollBackListener = new ForceRollBackListener();
+            jxp.addListener(forceRollBackListener);
 
-            assertEquals(england.getAttribute("englishName").getValue(), "England");
+            try {
+                // expect CommitException
+                // test if rolling back a committed ElementDeletingElement works when a change made to the same element fails after
+                // that. Normally the next change would not even get committed when the element gets deleted so we need to change the
+                // state and then delete the element manually for the commit to fail
+                expectException(PersistException.class, () -> context.invoke(() -> {
+                    england.delete();
+                    england.internal().setState(XmlElement.State.CLEAN);
+                    england.setAttribute("englishName", "testRollback");
+                }));
 
-            // test that the value gets rolled back correctly when changing the same attribute twice (rollback in reverse order
-            // of added changes)
-            expectException(PersistException.class, () -> context.invoke(() -> {
-                england.setAttribute("name", "testRollback");
-                england.setAttribute("name", "testRollback2");
-                england.delete();
-                england.phantomize();
-            }));
+                assertEquals(england.getAttribute("englishName").getValue(), "England");
 
-            assertEquals(england.getAttribute("name").getValue(), "England");
+                // test that the value gets rolled back correctly when changing the same attribute twice (rollback in reverse order
+                // of added changes)
+                expectException(PersistException.class, () -> context.invoke(() -> {
+                    england.setAttribute("name", "testRollback");
+                    england.setAttribute("name", "testRollback2");
+                    england.delete();
+                }));
+
+                assertEquals(england.getAttribute("name").getValue(), "England");
+            } finally {
+                jxp.removeListener(forceRollBackListener);
+            }
         });
     }
 
@@ -330,6 +336,28 @@ public class TransactionTest extends AbstractTest {
         });
     }
 
+    /**
+     * Test that when persisting and XmlElement with sub elements the created ElementCreatedEvents are added in proper
+     * order (parent first).
+     */
+    @Test
+    public void testCreationOrder() {
+        doWithCopiedContext(false, "/countries.xml", context -> context.invoke(() -> {
+            City city = new City("city", 1);
+            State state = new State("state", 1, Lists.newArrayList(city));
+            Country country = new Country("Country", "Country", true, Lists.newArrayList());
+            country.addSubElement(state);
+            country.persist(context);
+
+            Transaction activeTransaction = context.getActiveTransaction();
+            List<Event> changes = activeTransaction.getChanges();
+            assertEquals(changes.size(), 3);
+            assertTrue(changes.get(0).getSource() instanceof Country);
+            assertTrue(changes.get(1).getSource() instanceof State);
+            assertTrue(changes.get(2).getSource() instanceof City);
+        }));
+    }
+
     private static class FlushListener extends JxpEventListener {
 
         private int flushCount;
@@ -343,6 +371,18 @@ public class TransactionTest extends AbstractTest {
             return flushCount;
         }
 
+    }
+
+    private static class ForceRollBackListener extends JxpEventListener {
+
+        ForceRollBackListener() {
+            super(true);
+        }
+
+        @Override
+        public void onBeforeFlush(Transaction transaction) {
+            throw new RuntimeException("Rolling back");
+        }
     }
 
 }
