@@ -18,8 +18,8 @@ public class ReferenceCountedMutex<T> {
         this.containingMap = containingMap;
     }
 
-    public void incrementRc() {
-        rc.incrementAndGet();
+    public synchronized int incrementRc() {
+        return rc.getAndIncrement();
     }
 
     /**
@@ -29,6 +29,8 @@ public class ReferenceCountedMutex<T> {
         int currentRc = rc.decrementAndGet();
 
         if (currentRc < 1) {
+            // decrement rc again to a negative number to mark the mutex as invalid
+            rc.decrementAndGet();
             return containingMap.remove(key) != null;
         }
 

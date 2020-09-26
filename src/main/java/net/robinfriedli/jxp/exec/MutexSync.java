@@ -24,9 +24,24 @@ public class MutexSync<T> {
 
     @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
     public <E> E evaluateChecked(T key, Callable<E> toRun) throws Exception {
-        ReferenceCountedMutex<T> mutex = mutexMap.computeIfAbsent(key, k -> new ReferenceCountedMutex<>(k, mutexMap));
+        ReferenceCountedMutex<T> mutex;
 
-        mutex.incrementRc();
+        for (; ; ) {
+            mutex = mutexMap.computeIfAbsent(key, k -> new ReferenceCountedMutex<>(k, mutexMap));
+
+            int oldRc = mutex.incrementRc();
+
+            // It is possible that some thread cleared the mutex just after this thread retrieved it from the map
+            // but before this thread increments the rc. In this case the thread that removed the mutex also decremented
+            // the rc again to a negative integer so we can check here whether the previous rc was indeed negative when
+            // incrementing and retry getting the mutex. The order of these operations (the removing thread decrementing
+            // rc twice then this thread incrementing rc) is guaranteed to be correct since incrementRc() and decrementRc()
+            // are both synchronised methods.
+            if (oldRc >= 0) {
+                break;
+            }
+        }
+
         // -- thread C is here
         synchronized (mutex) {
             try {
