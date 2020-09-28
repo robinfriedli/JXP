@@ -5,6 +5,7 @@ import java.util.concurrent.Callable;
 
 import org.slf4j.Logger;
 
+import net.robinfriedli.exec.AbstractNestedModeWrapper;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.exec.modes.ApplyOnlyMode;
 import net.robinfriedli.jxp.exec.modes.CollectingApplyMode;
@@ -12,12 +13,13 @@ import net.robinfriedli.jxp.exec.modes.InstantApplyMode;
 import net.robinfriedli.jxp.exec.modes.InstantApplyOnlyMode;
 import net.robinfriedli.jxp.persist.Context;
 import net.robinfriedli.jxp.persist.Transaction;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Mode wrapper that wraps the given task into a Callable that manages opening / committing a transaction before / after
  * executing the given task. Also executed tasks queued to the created transaction before finishing.
  */
-public abstract class AbstractTransactionalMode extends AbstractDelegatingModeWrapper {
+public abstract class AbstractTransactionalMode extends AbstractNestedModeWrapper {
 
     private final Context context;
     private Transaction activeTransaction;
@@ -30,8 +32,9 @@ public abstract class AbstractTransactionalMode extends AbstractDelegatingModeWr
         this.context = context;
     }
 
+    @NotNull
     @Override
-    public <E> Callable<E> wrap(Callable<E> callable) {
+    public <E> Callable<E> wrap(@NotNull Callable<E> callable) {
         return () -> {
             activeTransaction = context.getTransaction();
             newTransaction = getTransaction();

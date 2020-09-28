@@ -8,6 +8,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.annotations.*;
 
 import com.google.common.collect.Lists;
+import net.robinfriedli.exec.Mode;
+import net.robinfriedli.exec.modes.MutexSyncMode;
 import net.robinfriedli.jxp.AbstractTest;
 import net.robinfriedli.jxp.api.JxpBackend;
 import net.robinfriedli.jxp.api.JxpBuilder;
@@ -19,9 +21,7 @@ import net.robinfriedli.jxp.events.Event;
 import net.robinfriedli.jxp.events.JxpEventListener;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.exec.AbstractTransactionalMode;
-import net.robinfriedli.jxp.exec.Invoker;
 import net.robinfriedli.jxp.exec.QueuedTask;
-import net.robinfriedli.jxp.exec.modes.MutexSyncMode;
 import net.robinfriedli.jxp.queries.Query;
 
 import static net.robinfriedli.jxp.queries.Conditions.*;
@@ -171,8 +171,8 @@ public class TransactionTest extends AbstractTest {
 
 
             if (runAsQueuedTask) {
-                Invoker.Mode mode = Invoker.Mode.create()
-                    .with(new MutexSyncMode(context.getMutexKey()))
+                Mode mode = Mode.create()
+                    .with(new MutexSyncMode<>(context.getMutexKey(), Context.GLOBAL_CONTEXT_SYNC))
                     .with(AbstractTransactionalMode.Builder.create().build(context));
                 queuedTask1 = context.futureInvoke(false, false, mode, task1);
                 queuedTask2 = context.futureInvoke(false, false, mode, task2);

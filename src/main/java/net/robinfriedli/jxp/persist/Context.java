@@ -9,15 +9,16 @@ import java.util.function.Predicate;
 
 import javax.annotation.Nullable;
 
+import net.robinfriedli.exec.Mode;
+import net.robinfriedli.exec.MutexSync;
+import net.robinfriedli.exec.modes.MutexSyncMode;
 import net.robinfriedli.jxp.api.JxpBackend;
 import net.robinfriedli.jxp.api.Node;
 import net.robinfriedli.jxp.api.StaticXmlElementFactory;
 import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.exec.AbstractTransactionalMode;
-import net.robinfriedli.jxp.exec.Invoker;
 import net.robinfriedli.jxp.exec.QueuedTask;
-import net.robinfriedli.jxp.exec.modes.MutexSyncMode;
 import net.robinfriedli.jxp.queries.Conditions;
 import net.robinfriedli.jxp.queries.Query;
 import net.robinfriedli.jxp.queries.QueryResult;
@@ -32,6 +33,8 @@ import org.w3c.dom.Element;
  * XML file.
  */
 public interface Context extends AutoCloseable {
+
+    MutexSync<String> GLOBAL_CONTEXT_SYNC = new MutexSync<>();
 
     /**
      * AutoCloseable#close override that does not throw an exception since this implementation never does so no
@@ -328,8 +331,8 @@ public interface Context extends AutoCloseable {
      * Run a Callable in a {@link Transaction}. For any actions that create, change or delete an {@link XmlElement},
      * i.e anything that requires a transaction.
      * <p>
-     * This is the core invoke implementation above {@link #invoke(Invoker.Mode, Callable)} used for any invoke implementation
-     * without a custom execution {@link Invoker.Mode}. Calls {@link #invoke(Invoker.Mode, Callable)} with a Mode that
+     * This is the core invoke implementation above {@link #invoke(Mode, Callable)} used for any invoke implementation
+     * without a custom execution {@link Mode}. Calls {@link #invoke(Mode, Callable)} with a Mode that
      * combines {@link MutexSyncMode} and {@link AbstractTransactionalMode} to run a transaction that is synchronised
      * across all threads based on the canonical file path or {@link Document instance} managed by this context.
      * JXP does not support running several transactions targeting the same file / document concurrently.
@@ -339,11 +342,11 @@ public interface Context extends AutoCloseable {
      * @param instantApply defines whether the changes will be applied instantly or all at once after the task has run.
      *                     e.g. if false, this code would return the old value of "attribute", not "newValue"
      *                     <pre>{@code
-     *                      return context.invoke(true, false, () -> {
-     *                          someElement.setAttribute("attribute", "newValue");
-     *                          return someElement.geAttribute("attribute").getValue();
-     *                      })
-     *                      }</pre>
+     *                     return context.invoke(true, false, () -> {
+     *                         someElement.setAttribute("attribute", "newValue");
+     *                         return someElement.geAttribute("attribute").getValue();
+     *                     })
+     *                     }</pre>
      *                     however, disabling instantApply might slightly improve performance when dealing with a large number of changes.
      *                     If false the transaction will be added to this Context's uncommitted transactions that can be
      *                     committed or reverted using {@link #commitAll()} or {@link #revertAll()} respectively.
@@ -358,11 +361,11 @@ public interface Context extends AutoCloseable {
     <E> E invoke(boolean commit, boolean instantApply, Callable<E> task);
 
     /**
-     * Core invoke implementation that is called by each overloading method that runs the task in any given {@link Invoker.Mode}
+     * Core invoke implementation that is called by each overloading method that runs the task in any given {@link Mode}
      *
      * @throws PersistException if a checked exception occurs
      */
-    <E> E invoke(Invoker.Mode mode, Callable<E> task);
+    <E> E invoke(Mode mode, Callable<E> task);
 
     /**
      * same as {@link #invoke(boolean, boolean, Callable)} with commit = true and instantApply = true as default values
@@ -400,9 +403,9 @@ public interface Context extends AutoCloseable {
     void invoke(boolean commit, boolean instantApply, Runnable task);
 
     /**
-     * Like {@link #invoke(Invoker.Mode, Callable)} but accepts a Runnable
+     * Like {@link #invoke(Mode, Callable)} but accepts a Runnable
      */
-    void invoke(Invoker.Mode mode, Runnable task);
+    void invoke(Mode mode, Runnable task);
 
     /**
      * same as {@link #invoke(boolean, boolean, Runnable)} with commit = true and instantApply = true as default values
@@ -436,7 +439,7 @@ public interface Context extends AutoCloseable {
      * the transaction finished. Else the implementor needs to start the task manually.
      * <p>
      * This is commonly used to run a task after the current transaction has finished in the same thread, if you want to
-     * run the task in a separate thread you should use {@link #futureInvoke(boolean, boolean, Invoker.Mode, Callable)}
+     * run the task in a separate thread you should use {@link #futureInvoke(boolean, boolean, Mode, Callable)}
      * and apply the {@link MutexSyncMode} to enable synchronisation of the task.
      *
      * @param callable         the callable to call in the future
@@ -456,7 +459,7 @@ public interface Context extends AutoCloseable {
      *
      * @throws PersistException if enqueue is true but no active transaction exists in the current thread
      */
-    <E> QueuedTask<E> futureInvoke(boolean cancelOnFailure, boolean enqueue, Invoker.Mode mode, Callable<E> callable);
+    <E> QueuedTask<E> futureInvoke(boolean cancelOnFailure, boolean enqueue, Mode mode, Callable<E> callable);
 
     /**
      * calls {@link #futureInvoke(boolean, boolean, boolean, boolean, boolean, Callable)} with default values commit = true,

@@ -13,12 +13,12 @@ import javax.annotation.Nullable;
 import org.slf4j.Logger;
 
 import com.google.common.collect.Lists;
+import net.robinfriedli.exec.MutexSync;
 import net.robinfriedli.jxp.events.ElementChangingEvent;
 import net.robinfriedli.jxp.events.ElementCreatedEvent;
 import net.robinfriedli.jxp.events.ElementDeletingEvent;
 import net.robinfriedli.jxp.events.JxpEventListener;
 import net.robinfriedli.jxp.exceptions.PersistException;
-import net.robinfriedli.jxp.exec.MutexSync;
 import net.robinfriedli.jxp.logging.LoggerSupplier;
 import net.robinfriedli.jxp.persist.BindableCachedContext;
 import net.robinfriedli.jxp.persist.BindableLazyContext;

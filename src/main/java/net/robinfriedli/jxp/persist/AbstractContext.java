@@ -22,17 +22,17 @@ import org.slf4j.Logger;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
+import net.robinfriedli.exec.Invoker;
+import net.robinfriedli.exec.Mode;
+import net.robinfriedli.exec.modes.MutexSyncMode;
 import net.robinfriedli.jxp.api.JxpBackend;
 import net.robinfriedli.jxp.api.XmlElement;
 import net.robinfriedli.jxp.exceptions.CommitException;
 import net.robinfriedli.jxp.exceptions.PersistException;
 import net.robinfriedli.jxp.exceptions.QueryException;
 import net.robinfriedli.jxp.exec.AbstractTransactionalMode;
-import net.robinfriedli.jxp.exec.BaseInvoker;
-import net.robinfriedli.jxp.exec.Invoker;
 import net.robinfriedli.jxp.exec.QueuedTask;
 import net.robinfriedli.jxp.exec.modes.ListenersMutedMode;
-import net.robinfriedli.jxp.exec.modes.MutexSyncMode;
 import net.robinfriedli.jxp.exec.modes.SequentialMode;
 import net.robinfriedli.jxp.queries.Query;
 import net.robinfriedli.jxp.queries.ResultStream;
@@ -348,15 +348,15 @@ public abstract class AbstractContext implements Context {
 
     @Override
     public <E> E invoke(boolean commit, boolean instantApply, Callable<E> task) {
-        Invoker.Mode mode = Invoker.Mode.create()
-            .with(new MutexSyncMode(getMutexKey()))
+        Mode mode = Mode.create()
+            .with(new MutexSyncMode<>(getMutexKey(), GLOBAL_CONTEXT_SYNC))
             .with(getTransactionMode(instantApply, false).shouldCommit(commit));
         return invoke(mode, task);
     }
 
     @Override
-    public <E> E invoke(Invoker.Mode mode, Callable<E> task) {
-        Invoker invoker = new BaseInvoker();
+    public <E> E invoke(Mode mode, Callable<E> task) {
+        Invoker invoker = Invoker.newInstance();
         return invoker.invoke(mode, task, e -> new PersistException("Exception in task", e));
     }
 
@@ -374,7 +374,7 @@ public abstract class AbstractContext implements Context {
     }
 
     @Override
-    public void invoke(Invoker.Mode mode, Runnable task) {
+    public void invoke(Mode mode, Runnable task) {
         invoke(mode, () -> {
             task.run();
             return null;
@@ -396,15 +396,15 @@ public abstract class AbstractContext implements Context {
 
     @Override
     public <E> E invokeSequential(int sequence, Callable<E> task) {
-        Invoker.Mode mode = Invoker.Mode.create()
-            .with(new MutexSyncMode(getMutexKey()))
+        Mode mode = Mode.create()
+            .with(new MutexSyncMode<>(getMutexKey(), GLOBAL_CONTEXT_SYNC))
             .with(new SequentialMode(this, sequence));
         return invoke(mode, task);
     }
 
     @Override
     public <E> QueuedTask<E> futureInvoke(boolean commit, boolean instantApply, boolean cancelOnFailure, boolean triggerListeners, boolean enqueue, Callable<E> callable) {
-        Invoker.Mode mode = Invoker.Mode.create();
+        Mode mode = Mode.create();
 
         if (!triggerListeners) {
             mode.with(new ListenersMutedMode(backend));
@@ -415,7 +415,7 @@ public abstract class AbstractContext implements Context {
     }
 
     @Override
-    public <E> QueuedTask<E> futureInvoke(boolean cancelOnFailure, boolean enqueue, Invoker.Mode mode, Callable<E> callable) {
+    public <E> QueuedTask<E> futureInvoke(boolean cancelOnFailure, boolean enqueue, Mode mode, Callable<E> callable) {
         QueuedTask<E> queuedTask = new QueuedTask<>(this, cancelOnFailure, mode, callable, logger);
         Transaction transaction = threadTransaction.get();
         if (enqueue && transaction != null) {
@@ -439,7 +439,7 @@ public abstract class AbstractContext implements Context {
 
     @Override
     public <E> E invokeWithoutListeners(boolean commit, boolean instantApply, Callable<E> callable) {
-        Invoker.Mode mode = Invoker.Mode.create()
+        Mode mode = Mode.create()
             .with(new ListenersMutedMode(getBackend()))
             .with(getTransactionMode(instantApply, false).shouldCommit(commit));
         return invoke(mode, callable);
@@ -465,7 +465,7 @@ public abstract class AbstractContext implements Context {
 
     @Override
     public void apply(boolean instantApply, Runnable task) {
-        Invoker.Mode mode = Invoker.Mode.create().with(getTransactionMode(instantApply, true));
+        Mode mode = Mode.create().with(getTransactionMode(instantApply, true));
         invoke(mode, task);
     }
 
