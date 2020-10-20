@@ -6,7 +6,7 @@ Java XML Persistence API
     <dependency>
       <groupId>net.robinfriedli</groupId>
       <artifactId>JXP</artifactId>
-      <version>2.0.3</version>
+      <version>2.0.4</version>
       <type>pom</type>
     </dependency>
 
@@ -20,7 +20,7 @@ Java XML Persistence API
 ## Gradle
 ```gradle
     dependencies {
-        implementation "net.robinfriedli:JXP:2.0.3"
+        implementation "net.robinfriedli:JXP:2.0.4"
     }
 
     repositories {
