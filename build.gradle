@@ -14,7 +14,7 @@ dependencies {
     implementation "com.google.guava:guava:25.1-jre"
     implementation "org.seleniumhq.selenium:selenium-support:3.14.0"
     implementation "org.slf4j:slf4j-api:1.7.26"
-    implementation "net.robinfriedli:exec:1.1"
+    implementation "net.robinfriedli:exec:1.2"
     implementation "net.robinfriedli:StringList:1.6"
 
     testCompile "org.testng:testng:7.1.0"
@@ -22,7 +22,7 @@ dependencies {
 }
 
 group = "net.robinfriedli"
-version = "2.0.3"
+version = "2.0.4"
 description = "JXP"
 sourceCompatibility = "8"
 targetCompatibility = "8"
