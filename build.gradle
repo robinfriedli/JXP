@@ -7,15 +7,15 @@ plugins {
 
 repositories {
     mavenCentral()
-    jcenter()
+    maven { url "https://jitpack.io" }
 }
 
 dependencies {
     implementation "com.google.guava:guava:25.1-jre"
     implementation "org.seleniumhq.selenium:selenium-support:3.14.0"
     implementation "org.slf4j:slf4j-api:1.7.26"
-    implementation "net.robinfriedli:exec:1.2"
-    implementation "net.robinfriedli:StringList:1.6"
+    implementation "com.github.robinfriedli:exec:1.2"
+    implementation "com.github.robinfriedli:StringList:1.6"
 
     testCompile "org.testng:testng:7.1.0"
     testCompile "com.google.truth:truth:1.0.1"
