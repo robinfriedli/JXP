@@ -4,27 +4,26 @@ Java XML Persistence API
 ## Maven
 ```xml
     <dependency>
-      <groupId>net.robinfriedli</groupId>
+      <groupId>com.github.robinfriedli</groupId>
       <artifactId>JXP</artifactId>
-      <version>2.0.4</version>
+      <version>2.0.5</version>
       <type>pom</type>
     </dependency>
 
     <repository>
-        <id>jcenter</id>
-        <name>jcenter-bintray</name>
-        <url>https://jcenter.bintray.com</url>
+        <name>jitpack.io</name>
+        <url>https://jitpack.io</url>
     </repository>
 ```
 
 ## Gradle
 ```gradle
     dependencies {
-        implementation "net.robinfriedli:JXP:2.0.4"
+        implementation "com.github.robinfriedli:JXP:2.0.5"
     }
 
     repositories {
-        jcenter()
+        maven { url "https://jitpack.io" }
     }
 ```
 
